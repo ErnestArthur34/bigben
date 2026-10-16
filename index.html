@@ -67,7 +67,7 @@ const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
 const isAdmin=()=>st.me?.role==='admin',brId=()=>isAdmin()?st.view:st.me.branch;
-const price=p=>st.mode==='retail'?p.rp:p.wp,minq=p=>st.mode==='retail'?p.rm:p.wm;
+const price=p=>st.mode==='retail'?p.rp:p.wp;
 const up=c=>c.price??price(prod(c.id)),minp=p=>st.mode==='retail'?(p.rmp??p.rp):(p.wmp??p.wp);
 const ms=t=>t?.toMillis?t.toMillis():(t||Date.now());
 const appName=()=>st.cfg.app||'Tillwise POS';
@@ -105,28 +105,28 @@ const waitV=()=>{const m=st.me;return `<div class="card auth"><h2>${m.active===f
 const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock']]:[]),...(isAdmin()?[['branches','Branches & shop'],['users','Users']]:[])];
 
 const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku).toLowerCase().includes(st.q.toLowerCase()));
- return ps.map(p=>`<button class="prod" ${stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Min qty ${minq(p)} · lowest ${cur(minp(p))} · ${stock(p.id)} in stock</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
+ return ps.map(p=>`<button class="prod" ${stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))} · ${stock(p.id)} in stock</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
 const total=()=>st.cart.reduce((s,c)=>s+up(c)*c.qty,0);
 function posV(){if(!brId()||brId()==='all')return '<div class="card">Select a branch in the header to start selling.</div>';
  st.cart=st.cart.filter(c=>prod(c.id));const m=st.mode;
  return `<div class="pos"><div><div class="mode"><button class="${m==='retail'?'on':''}" data-a="mode" data-id="retail">Retail</button><button class="wh ${m==='wholesale'?'on':''}" data-a="mode" data-id="wholesale">Wholesale</button></div>
 <input id="qs" style="width:100%;margin-top:10px" placeholder="Search name or SKU" value="${esc(st.q)}" data-i="q"><div class="grid" id="gr">${gridV()}</div></div>
 <div class="card" style="align-self:start"><h3>Cart <span class="tag ${m}">${m}</span></h3>
-${st.cart.map(c=>{const p=prod(c.id),bad=c.qty<minq(p)||c.qty>stock(p.id),pb=up(c)<minp(p);return `<div class="line"><div>${esc(p.name)}<div class="sm mu">Min qty ${minq(p)} · lowest price ${cur(minp(p))}</div><input type="number" step="0.01" min="0" class="${pb?'bad':''}" style="width:96px;padding:4px 6px;margin-top:3px" value="${up(c)}" data-c="uprice" data-id="${c.id}" aria-label="Unit price"></div><input type="number" min="0" class="${bad?'bad':''}" value="${c.qty}" data-c="qty" data-id="${c.id}"><span class="r">${cur(up(c)*c.qty)}</span><button class="d" style="padding:2px 6px" data-a="rm" data-id="${c.id}" aria-label="Remove">✕</button></div>`}).join('')||'<p class="mu">Tap a product to add it.</p>'}
+${st.cart.map(c=>{const p=prod(c.id),bad=c.qty<1||c.qty>stock(p.id),pb=up(c)<minp(p);return `<div class="line"><div>${esc(p.name)}<div class="sm mu">Lowest price ${cur(minp(p))} · ${stock(p.id)} in stock</div><input type="number" step="0.01" min="0" class="${pb?'bad':''}" style="width:96px;padding:4px 6px;margin-top:3px" value="${up(c)}" data-c="uprice" data-id="${c.id}" aria-label="Unit price"></div><input type="number" min="0" class="${bad?'bad':''}" value="${c.qty}" data-c="qty" data-id="${c.id}"><span class="r">${cur(up(c)*c.qty)}</span><button class="d" style="padding:2px 6px" data-a="rm" data-id="${c.id}" aria-label="Remove">✕</button></div>`}).join('')||'<p class="mu">Tap a product to add it.</p>'}
 ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder="Customer / business name">':''}
 <select id="pay" style="width:100%;margin-top:10px"><option>Cash</option><option>Card</option><option>Mobile money</option><option>Credit</option></select>
 <input id="tend" type="number" step="0.01" min="0" style="width:100%;margin-top:10px" placeholder="Amount received (optional, shows change)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0"><span>Total</span><span class="tot">${cur(total())}</span></div>
 <button class="p" style="width:100%" data-a="checkout">Complete sale & print</button></div></div>`}
 
-function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{};
+function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
  return `<div class="card"><h3>${e.id?'Edit product':'New product'}</h3><form class="fm row" data-s="prod"><input type="hidden" name="id" value="${e.id||''}">
 <label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label>
-<label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label><label>Retail minimum qty<input name="rm" type="number" min="1" value="${e.rm??1}" required></label>
-<label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Wholesale minimum qty<input name="wm" type="number" min="1" value="${e.wm??12}" required></label>
+<label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
+<label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok?'required':'disabled'}></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
-<div class="card"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Min qty</th><th>Wholesale</th><th>Min price</th><th>Min qty</th><th>Stock</th><th></th></tr>
-${st.products.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${p.rm}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${p.wm}</td><td>${b&&b!=='all'?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="10" class="mu">No products yet.</td></tr>'}</table></div></div>`}
+<div class="card"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th></th></tr>
+${st.products.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No products yet.</td></tr>'}</table></div></div>`}
 
 function salesV(){const ls=st.sales,rt=st.refunds.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
  return `<div class="stats"><div>Sales<b>${ls.length}</b></div><div>Retail<b>${cur(sum('retail'))}</b></div><div>Wholesale<b>${cur(sum('wholesale'))}</b></div>${st.me.role!=='cashier'?`<div>Refunds<b>${cur(rt)}</b></div>`:''}<div>Net sales<b>${cur(sum('retail')+sum('wholesale')-rt)}</b></div></div>
@@ -169,8 +169,8 @@ const A={
  am:id=>{st.am=id;render()},out:()=>signOut(auth),print:()=>window.print(),
  reset:async()=>{const e=prompt('Enter your account email');if(e)try{await sendPasswordResetEmail(auth,e);toast('Password reset email sent.')}catch(x){toast(x.message)}},
  tab:id=>{st.tab=id;if(st.view==='all'&&id!=='sales'){st.view=st.branches[0]?.id;watchBranch()}render()},
- mode:id=>{st.mode=id;st.cart.forEach(c=>{c.qty=Math.max(c.qty,minq(prod(c.id)));delete c.price});render()},
- add:id=>{const c=st.cart.find(x=>x.id===id);c?c.qty++:st.cart.push({id,qty:minq(prod(id))});render()},
+ mode:id=>{st.mode=id;st.cart.forEach(c=>delete c.price);render()},
+ add:id=>{const c=st.cart.find(x=>x.id===id);c?c.qty++:st.cart.push({id,qty:1});render()},
  rm:id=>{st.cart=st.cart.filter(x=>x.id!==id);render()},
  edit:id=>{st.ed=id||null;render();scrollTo(0,0)},
  rcpt:id=>{st.rc=st.sales.find(s=>s.id===id);render()},
@@ -182,7 +182,7 @@ const A={
  delb:async id=>{if(st.users.some(u=>u.branch===id))return toast('Reassign this branch\'s staff first.');if(confirm('Delete this branch?'))try{await deleteDoc(doc(db,'branches',id))}catch(e){toast(e.message)}},
  async checkout(){const b=brId(),m=st.mode,cu=($('cu')?.value||'').trim();
   if(!st.cart.length)return toast('Cart is empty.');
-  for(const c of st.cart){const p=prod(c.id);if(c.qty<minq(p))return toast(`${p.name}: ${m} minimum is ${minq(p)}.`);if(c.qty>stock(p.id))return toast(`${p.name}: only ${stock(p.id)} in stock.`);if(up(c)<minp(p))return toast(`${p.name}: lowest ${m} price is ${cur(minp(p))}.`)}
+  for(const c of st.cart){const p=prod(c.id);if(c.qty<1)return toast(`${p.name}: quantity must be at least 1.`);if(c.qty>stock(p.id))return toast(`${p.name}: only ${stock(p.id)} in stock.`);if(up(c)<minp(p))return toast(`${p.name}: lowest ${m} price is ${cur(minp(p))}.`)}
   if(m==='wholesale'&&!cu)return toast('Enter the wholesale customer name.');
   const items=st.cart.map(c=>({id:c.id,name:prod(c.id).name,qty:c.qty,price:up(c)})),tend=+$('tend').value||0;
   const s={no:'R'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:m,customer:cu,pay:$('pay').value,tend,items,total:total()};
@@ -202,7 +202,7 @@ const F={
   else await signInWithEmailAndPassword(auth,d.e,d.p)}catch(e){toast(e.message.replace('Firebase: ',''))}},
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
-  try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),rp:+d.rp,rmp,rm:Math.max(1,d.rm|0),wp:+d.wp,wmp,wm:Math.max(1,d.wm|0)});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
+  try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),rp:+d.rp,rmp,wp:+d.wp,wmp});const b=brId();if(d.qty!==undefined&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
  async branch(f){try{await addDoc(collection(db,'branches'),{name:new FormData(f).get('n').trim()});f.reset()}catch(e){toast(e.message)}},
  async refund(f){const s=st.rf,d=new FormData(f),b=s.branch;
   const items=s.items.map(i=>({id:i.id,name:i.name,price:i.price,qty:parseInt(d.get('q_'+i.id))||0})).filter(i=>i.qty>0);
