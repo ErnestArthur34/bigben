@@ -77,6 +77,8 @@ const stat=s=>{const l=s.items.map(i=>i.qty-refd(s.id,i.id));return l.every(x=>x
 
 let auth,db,subs=[],bsubs=[],pub=null;
 try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);onSnapshot(doc(db,'settings','shop'),s=>{st.cfg=s.data()||{};render()},()=>{})}catch(e){document.getElementById('app').innerHTML='<div class="card auth"><h2>Firebase is not configured</h2><p class="mu">Open index.html and paste your Firebase web config into <code>firebaseConfig</code>.</p></div>'}
+/* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
+const fp=p=>p.length<6?p+'#pos-pad':p;
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -99,7 +101,7 @@ function watchBranch(){clear(bsubs);const b=brId();if(!st.me?.role)return;
 /* ---------- views ---------- */
 const authV=()=>`<div class="card auth"><h1 style="display:flex;align-items:center;gap:10px">${logo(36)}${esc(appName())}</h1><p class="mu">Log in with your staff account. New accounts wait for an admin to assign a role and branch.</p>
 <div class="seg"><button class="${st.am==='in'?'on':''}" data-a="am" data-id="in">Log in</button><button class="${st.am==='up'?'on':''}" data-a="am" data-id="up">Create account</button></div>
-<form class="fm" data-s="auth">${st.am==='up'?'<input name="n" placeholder="Full name" required>':''}<input name="e" type="email" placeholder="Email" required><input name="p" type="password" placeholder="Password" required><button class="p">${st.am==='up'?'Create account':'Log in'}</button></form>
+<form class="fm" data-s="auth">${st.am==='up'?'<input name="n" placeholder="Full name" required>':''}<input name="e" type="email" placeholder="Email" required><input name="p" type="password" placeholder="Password (any length)" required><button class="p">${st.am==='up'?'Create account':'Log in'}</button></form>
 ${st.am==='in'?'<p class="sm"><a href="#" data-a="reset">Forgot password?</a></p>':''}</div>`;
 const waitV=()=>{const m=st.me;return `<div class="card auth"><h2>${m.active===false?'Account disabled':'Waiting for access'}</h2><p class="mu">${m.active===false?'An admin has disabled this account.':m.role?'An admin still needs to assign you to a branch.':'An admin needs to assign your role and branch. Ask them, then refresh.'}</p><button data-a="out">Log out</button></div>`};
 const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock']]:[]),...(isAdmin()?[['branches','Branches & shop'],['users','Users']]:[])];
@@ -198,8 +200,8 @@ const C={
 const upd=async(id,d)=>{try{await updateDoc(doc(db,'users',id),d)}catch(e){toast(e.message)}};
 const F={
  async auth(f){const d=Object.fromEntries(new FormData(f));try{
-  if(st.am==='up'){const r=await createUserWithEmailAndPassword(auth,d.e,d.p);await setDoc(doc(db,'users',r.user.uid),{name:d.n.trim(),email:d.e,role:null,branch:null,active:true,created:serverTimestamp()})}
-  else await signInWithEmailAndPassword(auth,d.e,d.p)}catch(e){toast(e.code==='auth/weak-password'?'Firebase Authentication requires at least 6 characters.':e.message.replace('Firebase: ',''))}},
+  if(st.am==='up'){const r=await createUserWithEmailAndPassword(auth,d.e,fp(d.p));await setDoc(doc(db,'users',r.user.uid),{name:d.n.trim(),email:d.e,role:null,branch:null,active:true,created:serverTimestamp()})}
+  else await signInWithEmailAndPassword(auth,d.e,fp(d.p))}catch(e){toast(e.code==='auth/weak-password'?'Firebase Authentication requires at least 6 characters.':e.message.replace('Firebase: ',''))}},
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
   try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),rp:+d.rp,rmp,wp:+d.wp,wmp});const b=brId();if(d.qty!==undefined&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
