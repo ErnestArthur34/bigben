@@ -62,7 +62,7 @@ import {getFirestore,collection,doc,setDoc,addDoc,updateDoc,deleteDoc,onSnapshot
 
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=t=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',3500)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -70,6 +70,14 @@ const isAdmin=()=>st.me?.role==='admin',brId=()=>isAdmin()?st.view:st.me.branch;
 const price=p=>st.mode==='retail'?p.rp:p.wp;
 const up=c=>c.price??price(prod(c.id)),minp=p=>st.mode==='retail'?(p.rmp??p.rp):(p.wmp??p.wp);
 const ms=t=>t?.toMillis?t.toMillis():(t||Date.now());
+const p2=n=>String(n).padStart(2,'0'),dstr=t=>{const d=new Date(ms(t));return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())};
+const fdt=t=>dstr(t)+' '+p2(new Date(ms(t)).getHours())+':'+p2(new Date(ms(t)).getMinutes());
+const inR=t=>{const d=dstr(t);return(!st.from||d>=st.from)&&(!st.to||d<=st.to)};
+const fsales=()=>st.sales.filter(s=>inR(s.ts)),frefs=()=>st.refunds.filter(r=>inR(r.ts));
+const bn=()=>{const b=brId();return(b==='all'?'all-branches':bname(b)).replace(/\W+/g,'-')+'_'+(st.from||'start')+'_to_'+(st.to||'today')};
+/* Download rows as a CSV file (opens in Excel / Google Sheets) */
+const dl=(name,rows)=>{const t='\ufeff'+rows.map(r=>r.map(v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv;charset=utf-8'}));a.download=name+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 const appName=()=>st.cfg.app||'Tillwise POS';
 const logo=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="var(--ac)"/><path d="M18 12h28v40l-5-4-4 4-5-4-5 4-4-4-5 4z" fill="var(--on)"/><path d="M24 22h16M24 30h16M24 38h10" stroke="var(--ac)" stroke-width="3" stroke-linecap="round"/></svg>`;
 const refd=(sid,pid)=>st.refunds.filter(r=>r.sale===sid).reduce((a,r)=>a+(r.items.find(i=>i.id===pid)?.qty||0),0);
@@ -127,14 +135,15 @@ function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
 <label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
 <label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok?'required':'disabled'}></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
-<div class="card"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th></th></tr>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><button data-a="xstock">Export inventory</button></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th></th></tr>
 ${st.products.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No products yet.</td></tr>'}</table></div></div>`}
 
-function salesV(){const ls=st.sales,rt=st.refunds.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
- return `<div class="stats"><div>Sales<b>${ls.length}</b></div><div>Retail<b>${cur(sum('retail'))}</b></div><div>Wholesale<b>${cur(sum('wholesale'))}</b></div>${st.me.role!=='cashier'?`<div>Refunds<b>${cur(rt)}</b></div>`:''}<div>Net sales<b>${cur(sum('retail')+sum('wholesale')-rt)}</b></div></div>
+function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
+ return `<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="sm mu" style="display:grid;gap:3px">From<input type="date" value="${st.from}" data-c="from"></label><label class="sm mu" style="display:grid;gap:3px">To<input type="date" value="${st.to}" data-c="to"></label><button data-a="clr">All dates</button><span style="flex:1"></span><button data-a="xsales">Export sales</button><button data-a="xitems">Export sale items</button>${st.me.role!=='cashier'?'<button data-a="xrefunds">Export refunds</button>':''}</div>
+<div class="stats"><div>Sales<b>${ls.length}</b></div><div>Retail<b>${cur(sum('retail'))}</b></div><div>Wholesale<b>${cur(sum('wholesale'))}</b></div>${st.me.role!=='cashier'?`<div>Refunds<b>${cur(rt)}</b></div>`:''}<div>Net sales<b>${cur(sum('retail')+sum('wholesale')-rt)}</b></div></div>
 <div class="card"><h3>Sales history</h3><div class="tw"><table><tr><th>Receipt</th><th>Date</th><th>Branch</th><th>Cashier</th><th>Type</th><th>Customer</th><th class="r">Total</th><th>Status</th><th></th></tr>
 ${ls.map(s=>`<tr><td>${s.no}</td><td>${new Date(ms(s.ts)).toLocaleString()}</td><td>${esc(bname(s.branch))}</td><td>${esc(s.uname)}</td><td><span class="tag ${s.mode}">${s.mode}</span></td><td>${esc(s.customer)||'—'}</td><td class="r">${cur(s.total)}</td><td>${stat(s)?`<span class="tag refunded">${stat(s)}</span>`:''}</td><td><button data-a="rcpt" data-id="${s.id}">Reprint</button>${st.me.role!=='cashier'&&stat(s)!=='Refunded'?` <button class="d" data-a="rfopen" data-id="${s.id}">Refund</button>`:''}</td></tr>`).join('')||'<tr><td colspan="9" class="mu">No sales yet.</td></tr>'}</table></div></div>
-${st.me.role!=='cashier'?`<div class="card"><h3>Refunds</h3><div class="tw"><table><tr><th>Refund</th><th>Date</th><th>Sale</th><th>By</th><th>Reason</th><th class="r">Amount</th><th></th></tr>${st.refunds.map(r=>`<tr><td>${r.no}</td><td>${new Date(ms(r.ts)).toLocaleString()}</td><td>${r.saleNo}</td><td>${esc(r.uname)}</td><td>${esc(r.reason)}</td><td class="r">-${cur(r.total)}</td><td><button data-a="rrcpt" data-id="${r.id}">Reprint</button></td></tr>`).join('')||'<tr><td colspan="7" class="mu">No refunds yet.</td></tr>'}</table></div></div>`:''}`}
+${st.me.role!=='cashier'?`<div class="card"><h3>Refunds</h3><div class="tw"><table><tr><th>Refund</th><th>Date</th><th>Sale</th><th>By</th><th>Reason</th><th class="r">Amount</th><th></th></tr>${rfs.map(r=>`<tr><td>${r.no}</td><td>${new Date(ms(r.ts)).toLocaleString()}</td><td>${r.saleNo}</td><td>${esc(r.uname)}</td><td>${esc(r.reason)}</td><td class="r">-${cur(r.total)}</td><td><button data-a="rrcpt" data-id="${r.id}">Reprint</button></td></tr>`).join('')||'<tr><td colspan="7" class="mu">No refunds yet.</td></tr>'}</table></div></div>`:''}`}
 
 const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>App name, shop & receipt details</h3><form class="fm row" data-s="cfg"><label>App name<input name="app" value="${esc(c.app)}" placeholder="Tillwise POS"></label><label>Shop name<input name="name" value="${esc(c.name)}"></label><label>Address<input name="addr" value="${esc(c.addr)}"></label><label>Phone<input name="tel" value="${esc(c.tel)}"></label><label>Currency symbol<input name="cur" value="${esc(c.cur)}" maxlength="4"></label><label>Receipt footer<input name="foot" value="${esc(c.foot??'Thank you for shopping with us!')}"></label><button class="p">Save</button></form></div>
 <div class="card"><h3>Branches</h3><form class="fm row" data-s="branch"><label>New branch name<input name="n" required></label><button class="p">Add branch</button></form>
@@ -168,6 +177,11 @@ function render(){const a=$('app');document.title=appName();if(!auth)return;
 
 /* ---------- actions ---------- */
 const A={
+ clr:()=>{st.from=st.to='';render()},
+ xsales:()=>dl('sales_'+bn(),[['Receipt','Date','Branch','Cashier','Type','Customer','Payment','Items sold','Total','Status'],...fsales().map(s=>[s.no,fdt(s.ts),bname(s.branch),s.uname,s.mode,s.customer,s.pay,s.items.reduce((a,i)=>a+i.qty,0),s.total.toFixed(2),stat(s)||'Completed'])]),
+ xitems:()=>dl('sale-items_'+bn(),[['Receipt','Date','Branch','Cashier','Type','Product','Qty','Unit price','Line total'],...fsales().flatMap(s=>s.items.map(i=>[s.no,fdt(s.ts),bname(s.branch),s.uname,s.mode,i.name,i.qty,i.price.toFixed(2),(i.qty*i.price).toFixed(2)]))]),
+ xrefunds:()=>dl('refunds_'+bn(),[['Refund no.','Date','Original sale','Branch','Processed by','Reason','Returned to stock','Amount'],...frefs().map(r=>[r.no,fdt(r.ts),r.saleNo,bname(r.branch),r.uname,r.reason,r.restock?'Yes':'No',r.total.toFixed(2)])]),
+ xstock:()=>{const b=brId();if(!b||b==='all')return toast('Select a branch first.');dl('inventory_'+bname(b).replace(/\W+/g,'-'),[['Product','SKU','Retail price','Retail min price','Wholesale price','Wholesale min price','Quantity','Stock value (retail)'],...st.products.map(p=>[p.name,p.sku,p.rp,p.rmp??p.rp,p.wp,p.wmp??p.wp,stock(p.id),(stock(p.id)*p.rp).toFixed(2)])])},
  am:id=>{st.am=id;render()},out:()=>signOut(auth),print:()=>window.print(),
  reset:async()=>{const e=prompt('Enter your account email');if(e)try{await sendPasswordResetEmail(auth,e);toast('Password reset email sent.')}catch(x){toast(x.message)}},
  tab:id=>{st.tab=id;if(st.view==='all'&&id!=='sales'){st.view=st.branches[0]?.id;watchBranch()}render()},
@@ -192,6 +206,7 @@ const A={
    items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
    await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render()}catch(e){toast('Sale failed: '+e.message)}}};
 const C={
+ from:(_,v)=>{st.from=v;render()},to:(_,v)=>{st.to=v;render()},
  uprice:(id,v)=>{st.cart.find(x=>x.id===id).price=Math.max(0,+v||0);render()},
  qty:(id,v)=>{st.cart.find(x=>x.id===id).qty=Math.max(0,parseInt(v)||0);render()},
  view:(_,v)=>{st.view=v;watchBranch();render()},
