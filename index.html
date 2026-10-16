@@ -4,6 +4,13 @@
 <title>Tillwise POS</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4e89'/%3E%3Cpath d='M18 12h28v40l-5-4-4 4-5-4-5 4-4-4-5 4z' fill='white'/%3E%3Cpath d='M24 22h16M24 30h16M24 38h10' stroke='%231d4e89' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#1d4e89">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tillwise">
+<meta name="description" content="Multi-branch point of sale for retail and wholesale.">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f3f1ec;--card:#fff;--tx:#17212b;--mu:#667085;--bd:#dedad2;--ac:#1d4e89;--on:#fff;--w:#b45309;--wbg:#fdf0dc;--rbg:#e3edf9;--dg:#b42318;color-scheme:light}
@@ -235,4 +242,5 @@ document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.s){e.preven
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.c)C[t.dataset.c](t.dataset.id,t.value)});
 document.addEventListener('input',e=>{if(e.target.dataset.i==='q'){st.q=e.target.value;$('gr').innerHTML=gridV()}});
 render();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script></body></html>
