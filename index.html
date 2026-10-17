@@ -65,11 +65,18 @@ const firebaseConfig={
 /* ========================================================================================= */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,sendPasswordResetEmail} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {getFirestore,collection,doc,setDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,where,writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection,doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,writeBatch as _writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* Offline support: Firestore keeps a local copy of the data and queues writes while offline.
+   A write promise only settles once the server answers, so ok() stops waiting after a moment
+   (immediately when offline) and the change carries on syncing in the background. */
+const ok=p=>new Promise((res,rej)=>{let late=false;const t=setTimeout(()=>{late=true;res()},navigator.onLine?1500:0);
+ p.then(()=>{clearTimeout(t);res()},e=>{clearTimeout(t);late?toast('Sync failed: '+e.message):rej(e)})});
+const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDoc=(...a)=>ok(_updateDoc(...a)),deleteDoc=(...a)=>ok(_deleteDoc(...a));
+const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=t=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',3500)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -91,9 +98,10 @@ const refd=(sid,pid)=>st.refunds.filter(r=>r.sale===sid).reduce((a,r)=>a+(r.item
 const stat=s=>{const l=s.items.map(i=>i.qty-refd(s.id,i.id));return l.every(x=>x<=0)?'Refunded':l.some((x,k)=>x<s.items[k].qty)?'Partial refund':''};
 
 let auth,db,subs=[],bsubs=[],pub=null;
-try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);onSnapshot(doc(db,'settings','shop'),s=>{st.cfg=s.data()||{};render()},()=>{})}catch(e){document.getElementById('app').innerHTML='<div class="card auth"><h2>Firebase is not configured</h2><p class="mu">Open index.html and paste your Firebase web config into <code>firebaseConfig</code>.</p></div>'}
+try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(firebaseConfig);auth=getAuth(app);try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(_){db=getFirestore(app)}onSnapshot(doc(db,'settings','shop'),s=>{st.cfg=s.data()||{};render()},()=>{})}catch(e){document.getElementById('app').innerHTML='<div class="card auth"><h2>Firebase is not configured</h2><p class="mu">Open index.html and paste your Firebase web config into <code>firebaseConfig</code>.</p></div>'}
 /* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
 const fp=p=>p.length<6?p+'#pos-pad':p;
+const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -108,10 +116,10 @@ function start(){
  if(isAdmin())subs.push(list(collection(db,'users'),'users'));
  watchBranch()}
 function watchBranch(){clear(bsubs);const b=brId();if(!st.me?.role)return;
- if(b&&b!=='all')bsubs.push(onSnapshot(query(collection(db,'stock'),where('branch','==',b)),s=>{st.stock={};s.docs.forEach(d=>st.stock[d.data().product]=d.data().qty);render()},e=>toast(e.message)));
+ if(b&&b!=='all')bsubs.push(onSnapshot(query(collection(db,'stock'),where('branch','==',b)),{includeMetadataChanges:true},s=>{st.pend.k=s.metadata.hasPendingWrites;st.stock={};s.docs.forEach(d=>st.stock[d.data().product]=d.data().qty);render()},e=>toast(e.message)));
  const sq=b==='all'?collection(db,'sales'):st.me.role==='cashier'?query(collection(db,'sales'),where('branch','==',b),where('uid','==',st.uid)):query(collection(db,'sales'),where('branch','==',b));
  st.refunds=[];if(b&&st.me.role!=='cashier')bsubs.push(onSnapshot(b==='all'?collection(db,'refunds'):query(collection(db,'refunds'),where('branch','==',b)),s=>{st.refunds=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,c)=>ms(c.ts)-ms(a.ts));render()},e=>toast(e.message)));
- if(b)bsubs.push(onSnapshot(sq,s=>{st.sales=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,c)=>ms(c.ts)-ms(a.ts));render()},e=>toast(e.message)))}
+ if(b)bsubs.push(onSnapshot(sq,{includeMetadataChanges:true},s=>{st.pend.s=s.metadata.hasPendingWrites;st.sales=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,c)=>ms(c.ts)-ms(a.ts));render()},e=>toast(e.message)))}
 
 /* ---------- views ---------- */
 const authV=()=>`<div class="card auth"><h1 style="display:flex;align-items:center;gap:10px">${logo(36)}${esc(appName())}</h1><p class="mu">Log in with your staff account. New accounts wait for an admin to assign a role and branch.</p>
@@ -175,7 +183,7 @@ function render(){const a=$('app');document.title=appName();if(!auth)return;
  if(!st.me){a.innerHTML=authV();$('m').innerHTML='';return}
  if(!(st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML=waitV();return}
  if(!tabs().some(t=>t[0]===st.tab))st.tab='pos';
- const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span>${esc(bname(st.me.branch))}</span>`}<span class="sm mu">${esc(st.me.name)} · ${st.me.role}</span><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
+ const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span>${esc(bname(st.me.branch))}</span>`}${net()}<span class="sm mu">${esc(st.me.name)} · ${st.me.role}</span><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
 <nav>${tabs().map(t=>`<button class="${st.tab===t[0]?'on':''}" data-a="tab" data-id="${t[0]}">${t[1]}</button>`).join('')}</nav>`;
  const f=document.activeElement,keep=f&&f.id==='qs';
  a.innerHTML=hdr+'<main>'+({pos:posV,sales:salesV,products:prodV,branches:branchV,users:usersV}[st.tab])()+'</main>';
@@ -218,7 +226,7 @@ const A={
   if(m==='wholesale'&&!cu)return toast('Enter the wholesale customer name.');
   const items=st.cart.map(c=>({id:c.id,name:prod(c.id).name,qty:c.qty,price:up(c)})),tend=+$('tend').value||0;
   const s={no:'R'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:m,customer:cu,pay:$('pay').value,tend,items,total:total()};
-  try{const batch=writeBatch(db);batch.set(doc(collection(db,'sales')),{...s,ts:serverTimestamp()});
+  try{const batch=writeBatch(db);batch.set(doc(collection(db,'sales')),{...s,ts:new Date()});
    items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
    await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render()}catch(e){toast('Sale failed: '+e.message)}}};
 const C={
@@ -232,7 +240,7 @@ const upd=async(id,d)=>{try{await updateDoc(doc(db,'users',id),d)}catch(e){toast
 const F={
  async auth(f){const d=Object.fromEntries(new FormData(f));try{
   if(st.am==='up'){const r=await createUserWithEmailAndPassword(auth,d.e,fp(d.p));await setDoc(doc(db,'users',r.user.uid),{name:d.n.trim(),phone:d.ph.trim(),email:d.e,role:null,branch:null,active:true,created:serverTimestamp()})}
-  else await signInWithEmailAndPassword(auth,d.e,fp(d.p))}catch(e){toast(e.code==='auth/weak-password'?'Firebase Authentication requires at least 6 characters.':e.message.replace('Firebase: ',''))}},
+  else await signInWithEmailAndPassword(auth,d.e,fp(d.p))}catch(e){toast(e.code==='auth/network-request-failed'?'No internet. Log in once while online; after that the app works offline.':e.code==='auth/weak-password'?'Firebase Authentication requires at least 6 characters.':e.message.replace('Firebase: ',''))}},
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
   try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),rp:+d.rp,rmp,wp:+d.wp,wmp});const b=brId();if(d.qty!==undefined&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
@@ -242,7 +250,7 @@ const F={
   if(!items.length)return toast('Enter a quantity to refund.');
   for(const i of items){const o=s.items.find(x=>x.id===i.id);if(i.qty>o.qty-refd(s.id,i.id))return toast(`${i.name}: refund exceeds quantity sold.`)}
   const r={sale:s.id,saleNo:s.no,no:'F'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:s.mode,customer:s.customer||'',pay:s.pay,items,total:items.reduce((a,i)=>a+i.qty*i.price,0),reason:d.get('reason').trim(),restock:!!d.get('restock')};
-  try{const batch=writeBatch(db);batch.set(doc(collection(db,'refunds')),{...r,ts:serverTimestamp()});
+  try{const batch=writeBatch(db);batch.set(doc(collection(db,'refunds')),{...r,ts:new Date()});
    if(r.restock)items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(i.qty)},{merge:true}));
    await batch.commit();st.rf=null;st.rc={...r,ts:Date.now(),refund:true};render()}catch(e){toast('Refund failed: '+e.message)}},
  async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)));toast('Saved.')}catch(e){toast(e.message)}}};
@@ -250,6 +258,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
 document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.s){e.preventDefault();F[f.dataset.s](f)}});
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.c)C[t.dataset.c](t.dataset.id,t.value)});
 document.addEventListener('input',e=>{if(e.target.dataset.i==='q'){st.q=e.target.value;$('gr').innerHTML=gridV()}});
+addEventListener('online',()=>render());addEventListener('offline',()=>render());
 render();
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script></body></html>

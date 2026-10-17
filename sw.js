@@ -1,6 +1,6 @@
 /* DANEST POS service worker: caches the app shell so it opens fast and loads offline.
    Firestore/Auth traffic is never cached, so sales and stock always come live from Firebase. */
-const CACHE = 'danest-pos-shell-v2';
+const CACHE = 'danest-pos-shell-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
