@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Tillwise POS",
-  "short_name": "Tillwise",
+  "name": "DANEST IT SOLUTIONS POS",
+  "short_name": "DANEST POS",
   "description": "Multi-branch point of sale for retail and wholesale: sales, stock, refunds, staff roles and printable receipts.",
   "start_url": "./index.html",
   "scope": "./",

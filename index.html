@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tillwise POS</title>
+<title>DANEST IT SOLUTIONS POS</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4e89'/%3E%3Cpath d='M18 12h28v40l-5-4-4 4-5-4-5 4-4-4-5 4z' fill='white'/%3E%3Cpath d='M24 22h16M24 30h16M24 38h10' stroke='%231d4e89' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#1d4e89">
 <link rel="manifest" href="manifest.webmanifest">
@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Tillwise">
+<meta name="apple-mobile-web-app-title" content="DANEST POS">
 <meta name="description" content="Multi-branch point of sale for retail and wholesale.">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -85,7 +85,7 @@ const bn=()=>{const b=brId();return(b==='all'?'all-branches':bname(b)).replace(/
 /* Download rows as a CSV file (opens in Excel / Google Sheets) */
 const dl=(name,rows)=>{const t='\ufeff'+rows.map(r=>r.map(v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv;charset=utf-8'}));a.download=name+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-const appName=()=>st.cfg.app||'Tillwise POS';
+const appName=()=>st.cfg.app||'DANEST IT SOLUTIONS POS';
 const logo=n=>`<svg width="${n}" height="${n}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="var(--ac)"/><path d="M18 12h28v40l-5-4-4 4-5-4-5 4-4-4-5 4z" fill="var(--on)"/><path d="M24 22h16M24 30h16M24 38h10" stroke="var(--ac)" stroke-width="3" stroke-linecap="round"/></svg>`;
 const refd=(sid,pid)=>st.refunds.filter(r=>r.sale===sid).reduce((a,r)=>a+(r.items.find(i=>i.id===pid)?.qty||0),0);
 const stat=s=>{const l=s.items.map(i=>i.qty-refd(s.id,i.id));return l.every(x=>x<=0)?'Refunded':l.some((x,k)=>x<s.items[k].qty)?'Partial refund':''};
@@ -149,10 +149,10 @@ function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0
  return `<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="sm mu" style="display:grid;gap:3px">From<input type="date" value="${st.from}" data-c="from"></label><label class="sm mu" style="display:grid;gap:3px">To<input type="date" value="${st.to}" data-c="to"></label><button data-a="clr">All dates</button><span style="flex:1"></span><button data-a="xsales">Export sales</button><button data-a="xitems">Export sale items</button>${st.me.role!=='cashier'?'<button data-a="xrefunds">Export refunds</button>':''}</div>
 <div class="stats"><div>Sales<b>${ls.length}</b></div><div>Retail<b>${cur(sum('retail'))}</b></div><div>Wholesale<b>${cur(sum('wholesale'))}</b></div>${st.me.role!=='cashier'?`<div>Refunds<b>${cur(rt)}</b></div>`:''}<div>Net sales<b>${cur(sum('retail')+sum('wholesale')-rt)}</b></div></div>
 <div class="card"><h3>Sales history</h3><div class="tw"><table><tr><th>Receipt</th><th>Date</th><th>Branch</th><th>Cashier</th><th>Type</th><th>Customer</th><th class="r">Total</th><th>Status</th><th></th></tr>
-${ls.map(s=>`<tr><td>${s.no}</td><td>${new Date(ms(s.ts)).toLocaleString()}</td><td>${esc(bname(s.branch))}</td><td>${esc(s.uname)}</td><td><span class="tag ${s.mode}">${s.mode}</span></td><td>${esc(s.customer)||'—'}</td><td class="r">${cur(s.total)}</td><td>${stat(s)?`<span class="tag refunded">${stat(s)}</span>`:''}</td><td><button data-a="rcpt" data-id="${s.id}">Reprint</button>${st.me.role!=='cashier'&&stat(s)!=='Refunded'?` <button class="d" data-a="rfopen" data-id="${s.id}">Refund</button>`:''}</td></tr>`).join('')||'<tr><td colspan="9" class="mu">No sales yet.</td></tr>'}</table></div></div>
+${ls.map(s=>`<tr><td>${s.no}</td><td>${new Date(ms(s.ts)).toLocaleString()}</td><td>${esc(bname(s.branch))}</td><td>${esc(s.uname)}</td><td><span class="tag ${s.mode}">${s.mode}</span></td><td>${esc(s.customer)||'—'}</td><td class="r">${cur(s.total)}</td><td>${stat(s)?`<span class="tag refunded">${stat(s)}</span>`:''}</td><td><button data-a="rcpt" data-id="${s.id}">Reprint</button>${isAdmin()?` <button class="d" data-a="delsale" data-id="${s.id}">Delete</button>`:''}${st.me.role!=='cashier'&&stat(s)!=='Refunded'?` <button class="d" data-a="rfopen" data-id="${s.id}">Refund</button>`:''}</td></tr>`).join('')||'<tr><td colspan="9" class="mu">No sales yet.</td></tr>'}</table></div></div>
 ${st.me.role!=='cashier'?`<div class="card"><h3>Refunds</h3><div class="tw"><table><tr><th>Refund</th><th>Date</th><th>Sale</th><th>By</th><th>Reason</th><th class="r">Amount</th><th></th></tr>${rfs.map(r=>`<tr><td>${r.no}</td><td>${new Date(ms(r.ts)).toLocaleString()}</td><td>${r.saleNo}</td><td>${esc(r.uname)}</td><td>${esc(r.reason)}</td><td class="r">-${cur(r.total)}</td><td><button data-a="rrcpt" data-id="${r.id}">Reprint</button></td></tr>`).join('')||'<tr><td colspan="7" class="mu">No refunds yet.</td></tr>'}</table></div></div>`:''}`}
 
-const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>App name, shop & receipt details</h3><form class="fm row" data-s="cfg"><label>App name<input name="app" value="${esc(c.app)}" placeholder="Tillwise POS"></label><label>Shop name<input name="name" value="${esc(c.name)}"></label><label>Address<input name="addr" value="${esc(c.addr)}"></label><label>Phone<input name="tel" value="${esc(c.tel)}"></label><label>Currency symbol<input name="cur" value="${esc(c.cur)}" maxlength="4"></label><label>Receipt footer<input name="foot" value="${esc(c.foot??'Thank you for shopping with us!')}"></label><button class="p">Save</button></form></div>
+const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>App name, shop & receipt details</h3><form class="fm row" data-s="cfg"><label>App name<input name="app" value="${esc(c.app)}" placeholder="DANEST IT SOLUTIONS POS"></label><label>Shop name<input name="name" value="${esc(c.name)}"></label><label>Address<input name="addr" value="${esc(c.addr)}"></label><label>Phone<input name="tel" value="${esc(c.tel)}"></label><label>Currency symbol<input name="cur" value="${esc(c.cur)}" maxlength="4"></label><label>Receipt footer<input name="foot" value="${esc(c.foot??'Thank you for shopping with us!')}"></label><button class="p">Save</button></form></div>
 <div class="card"><h3>Branches</h3><form class="fm row" data-s="branch"><label>New branch name<input name="n" required></label><button class="p">Add branch</button></form>
 <div class="tw"><table><tr><th>Branch</th><th>Staff</th><th></th></tr>${st.branches.map(b=>`<tr><td>${esc(b.name)}</td><td>${st.users.filter(u=>u.branch===b.id).length}</td><td><button data-a="renb" data-id="${b.id}">Rename</button> <button class="d" data-a="delb" data-id="${b.id}">Delete</button></td></tr>`).join('')||'<tr><td colspan="3" class="mu">Add your first branch.</td></tr>'}</table></div></div>`};
 const usersV=()=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Users & roles</h3><button data-a="xusers">Export staff contacts</button></div><p class="mu sm">Admins see every branch. Managers and cashiers work in one assigned branch. Managers edit products and stock; cashiers sell and see their own sales.</p><div class="tw"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th>Role</th><th>Branch</th><th>Status</th></tr>
@@ -164,7 +164,7 @@ function rfV(s){return `<div class="modal" data-a="closerc"><div class="card rc"
 <form class="fm" data-s="refund">${s.items.map(i=>{const mx=i.qty-refd(s.id,i.id);return `<label style="display:grid;grid-template-columns:1fr 80px;gap:8px;align-items:center;color:var(--tx)"><span>${esc(i.name)}<br><span class="sm mu">${cur(i.price)} · ${mx} of ${i.qty} refundable</span></span><input type="number" name="q_${i.id}" min="0" max="${mx}" value="0" ${mx?'':'disabled'}></label>`}).join('')}
 <input name="reason" placeholder="Reason for refund (required)" required><label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" name="restock" checked> Return items to stock</label>
 <div style="display:flex;gap:8px"><button class="p" style="flex:1">Process refund</button><button type="button" style="flex:1" data-a="closerc" data-id="x">Cancel</button></div></form></div></div>`}
-function rcptV(s){const c=st.cfg;return `<div class="modal" data-a="closerc"><div class="card rc" id="rcpt"><div class="ctr"><b style="font-size:16px">${esc(c.name||'Receipt')}</b><br>${esc(c.addr||'')}${c.tel?'<br>Tel: '+esc(c.tel):''}<br>${esc(bname(s.branch))}</div><hr>
+function rcptV(s){const c=st.cfg;return `<div class="modal" data-a="closerc"><div class="card rc" id="rcpt"><div class="ctr"><b style="font-size:16px">${esc(c.name||appName())}</b><br>${esc(c.addr||'')}${c.tel?'<br>Tel: '+esc(c.tel):''}<br>${esc(bname(s.branch))}</div><hr>
 ${s.refund?'<div class="ctr"><b>REFUND RECEIPT</b></div>':''}<div class="rw"><span>${s.refund?'Refund no.':'Receipt'}</span><span>${s.no}</span></div>${s.refund?`<div class="rw"><span>Original sale</span><span>${s.saleNo}</span></div>`:''}<div class="rw"><span>Date</span><span>${new Date(ms(s.ts)).toLocaleString()}</span></div><div class="rw"><span>Cashier</span><span>${esc(s.uname)}</span></div><div class="rw"><span>Sale type</span><span>${s.mode}</span></div>${s.customer?`<div class="rw"><span>Customer</span><span>${esc(s.customer)}</span></div>`:''}<hr>
 ${s.items.map(i=>`<div>${esc(i.name)}</div><div class="rw"><span>${i.qty} × ${cur(i.price)}</span><span>${cur(i.qty*i.price)}</span></div>`).join('')}<hr>
 <div class="rw"><b>${s.refund?'REFUND TOTAL':'TOTAL'}</b><b>${s.refund?'-':''}${cur(s.total)}</b></div><div class="rw"><span>${s.refund?'Refunded via':'Paid by'}</span><span>${esc(s.pay)}</span></div>${s.refund&&s.reason?`<div>Reason: ${esc(s.reason)}</div>`:''}${s.tend&&!s.refund?`<div class="rw"><span>Received</span><span>${cur(s.tend)}</span></div><div class="rw"><span>Change</span><span>${cur(s.tend-s.total)}</span></div>`:''}<hr><div class="ctr">${esc(c.foot??'Thank you for shopping with us!')}</div>
@@ -185,6 +185,12 @@ function render(){const a=$('app');document.title=appName();if(!auth)return;
 /* ---------- actions ---------- */
 const A={
  clr:()=>{st.from=st.to='';render()},
+ async delsale(id){const s=st.sales.find(x=>x.id===id);if(!s||!isAdmin())return;
+  if(!confirm(`Delete sale ${s.no} (${cur(s.total)})? Any refunds on it are removed too. This cannot be undone.`))return;
+  const rs=st.refunds.filter(r=>r.sale===id),back=confirm('Return the items from this sale to stock?\n\nOK = return to stock\nCancel = leave stock as it is');
+  try{const batch=writeBatch(db);batch.delete(doc(db,'sales',id));rs.forEach(r=>batch.delete(doc(db,'refunds',r.id)));
+   if(back)s.items.forEach(i=>{const n=i.qty-rs.filter(r=>r.restock).reduce((a,r)=>a+(r.items.find(x=>x.id===i.id)?.qty||0),0);if(n>0)batch.set(doc(db,'stock',s.branch+'_'+i.id),{branch:s.branch,product:i.id,qty:increment(n)},{merge:true})});
+   await batch.commit();toast('Sale deleted.')}catch(e){toast('Delete failed: '+e.message)}},
  xusers:()=>dl('staff-contacts',[['Name','Phone','Email','Role','Branch','Status'],...st.users.map(u=>[u.name,u.phone,u.email,u.role||'Unassigned',bname(u.branch),u.active===false?'Disabled':'Active'])]),
  ephone:async id=>{const u=st.users.find(x=>x.id===id),v=prompt('Phone number for '+u.name,u.phone||'');if(v!==null)try{await updateDoc(doc(db,'users',id),{phone:v.trim()});toast('Phone saved.')}catch(e){toast(e.message)}},
  myphone:async()=>{const v=prompt('Your phone number',st.me.phone||'');if(v!==null&&v.trim())try{await updateDoc(doc(db,'users',st.uid),{phone:v.trim()});toast('Contact saved.')}catch(e){toast(e.message)}},
