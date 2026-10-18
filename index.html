@@ -65,7 +65,7 @@ const firebaseConfig={
 /* ========================================================================================= */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,sendPasswordResetEmail} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection,doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,writeBatch as _writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection,doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,orderBy,limit,writeBatch as _writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* Offline support: Firestore keeps a local copy of the data and queues writes while offline.
    A write promise only settles once the server answers, so ok() stops waiting after a moment
@@ -76,7 +76,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=t=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',3500)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -102,6 +102,7 @@ try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(
 /* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
 const fp=p=>p.length<6?p+'#pos-pad':p;
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
+const BUILD='2026.10.18-b11';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -113,7 +114,9 @@ if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u
 const list=(q,key)=>onSnapshot(q,s=>{st[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(key==='branches'&&isAdmin()&&!st.branches.some(b=>b.id===st.view)&&st.view!=='all'){st.view=st.branches[0]?.id||null;watchBranch()}render()},e=>toast(e.message));
 function start(){
  subs.push(list(collection(db,'branches'),'branches'),list(collection(db,'products'),'products'));
- if(isAdmin())subs.push(list(collection(db,'users'),'users'));
+ if(isAdmin())subs.push(list(collection(db,'users'),'users'),
+  onSnapshot(collection(db,'stock'),{includeMetadataChanges:true},s=>{st.allStock={};s.docs.forEach(d=>st.allStock[d.id]=d.data().qty);st.pend.a=s.metadata.hasPendingWrites;render()},e=>toast(e.message)),
+  onSnapshot(query(collection(db,'movements'),orderBy('ts','desc'),limit(300)),s=>{st.moves=s.docs.map(d=>({id:d.id,...d.data()}));render()},e=>toast(e.message)));
  watchBranch()}
 function watchBranch(){clear(bsubs);const b=brId();if(!st.me?.role)return;
  if(b&&b!=='all')bsubs.push(onSnapshot(query(collection(db,'stock'),where('branch','==',b)),{includeMetadataChanges:true},s=>{st.pend.k=s.metadata.hasPendingWrites;st.stock={};s.docs.forEach(d=>st.stock[d.data().product]=d.data().qty);render()},e=>toast(e.message)));
@@ -127,7 +130,7 @@ const authV=()=>`<div class="card auth"><h1 style="display:flex;align-items:cent
 <form class="fm" data-s="auth">${st.am==='up'?'<input name="n" placeholder="Full name" required><input name="ph" type="tel" placeholder="Phone number" pattern="[0-9+() -]{7,20}" title="7 to 20 digits. You may use + ( ) and -" autocomplete="tel" required>':''}<input name="e" type="email" placeholder="Email" required><input name="p" type="password" placeholder="Password (any length)" required><button class="p">${st.am==='up'?'Create account':'Log in'}</button></form>
 ${st.am==='in'?'<p class="sm"><a href="#" data-a="reset">Forgot password?</a></p>':''}</div>`;
 const waitV=()=>{const m=st.me;return `<div class="card auth"><h2>${m.active===false?'Account disabled':'Waiting for access'}</h2><p class="mu">${m.active===false?'An admin has disabled this account.':m.role?'An admin still needs to assign you to a branch.':'An admin needs to assign your role and branch. Ask them, then refresh.'}</p><button data-a="out">Log out</button></div>`};
-const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock']]:[]),...(isAdmin()?[['branches','Branches & shop'],['users','Users']]:[])];
+const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock']]:[]),...(isAdmin()?[['warehouse','Warehouse'],['branches','Branches & shop'],['users','Users']]:[])];
 
 const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku).toLowerCase().includes(st.q.toLowerCase()));
  return ps.map(p=>`<button class="prod" ${stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))} · ${stock(p.id)} in stock</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
@@ -150,7 +153,7 @@ function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
 <label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
 <label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok?'required':'disabled'}></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
-<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><button data-a="xstock">Export inventory</button></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th></th></tr>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="pick" data-id="inv">Import CSV</button><button data-a="xstock">Export inventory</button></span><input type="file" accept=".csv,text/csv" id="f_inv" data-f="inv" hidden></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th></th></tr>
 ${st.products.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No products yet.</td></tr>'}</table></div></div>`}
 
 function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
@@ -178,6 +181,20 @@ ${s.items.map(i=>`<div>${esc(i.name)}</div><div class="rw"><span>${i.qty} × ${c
 <div class="rw"><b>${s.refund?'REFUND TOTAL':'TOTAL'}</b><b>${s.refund?'-':''}${cur(s.total)}</b></div><div class="rw"><span>${s.refund?'Refunded via':'Paid by'}</span><span>${esc(s.pay)}</span></div>${s.refund&&s.reason?`<div>Reason: ${esc(s.reason)}</div>`:''}${s.tend&&!s.refund?`<div class="rw"><span>Received</span><span>${cur(s.tend)}</span></div><div class="rw"><span>Change</span><span>${cur(s.tend-s.total)}</span></div>`:''}<hr><div class="ctr">${esc(c.foot??'Thank you for shopping with us!')}</div>
 <div class="noprint" style="display:flex;gap:8px;margin-top:14px"><button class="p" style="flex:1" data-a="print">Print</button><button style="flex:1" data-a="closerc" data-id="x">Close</button></div></div></div>`}
 
+/* ---------- warehouse (central store) ---------- */
+const loc=id=>id==='main'?'Warehouse':id==='supplier'?'Supplier':bname(id),ast=(l,p)=>st.allStock[l+'_'+p]||0;
+const MT={receive:'Received',distribute:'Distributed',return:'Returned',transfer:'Transfer',adjust:'Adjustment'};
+const mv=(b,type,p,qty,from,to,note)=>b.set(doc(collection(db,'movements')),{type,product:p.id,name:p.name,sku:p.sku,qty,from,to,note:note||'',uid:st.uid,uname:st.me.name,ts:new Date()});
+function whV(){const ps=st.products,bs=st.branches,tf=st.tf,av=tf.p&&tf.f?ast(tf.f,tf.p):null;
+ const po=sel=>ps.map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${esc(p.name)} (${esc(p.sku)})</option>`).join('');
+ const lo=sel=>[['main','Warehouse'],...bs.map(b=>[b.id,b.name])].map(([v,n])=>`<option value="${v}" ${sel===v?'selected':''}>${esc(n)}</option>`).join('');
+ return `<div class="card"><h3>Receive stock into the warehouse</h3><form class="fm row" data-s="receive"><label>Product<select name="p" required><option value="">Select…</option>${po('')}</select></label><label>Quantity received<input name="q" type="number" min="1" step="1" required></label><label>Supplier / invoice no.<input name="n"></label><button class="p">Receive stock</button></form></div>
+<div class="card"><h3>Transfer stock</h3><p class="mu sm">The sending place goes down and the receiving place goes up at the same time. Warehouse → Branch distributes stock. Branch → Warehouse returns it. Branch → Branch also works.</p>
+<form class="fm row" data-s="transfer"><label>Product<select name="p" data-c="tf" data-id="p" required><option value="">Select…</option>${po(tf.p)}</select></label><label>From<select name="fr" data-c="tf" data-id="f">${lo(tf.f)}</select></label><label>To<select name="to" data-c="tf" data-id="t" required><option value="">Select…</option>${lo(tf.t)}</select></label><label>Quantity${av!==null?' (available '+av+')':''}<input id="tfq" name="q" type="number" min="1" step="1" value="${esc(tf.q)}" required></label><label>Note<input id="tfn" name="n" value="${esc(tf.n)}"></label><button class="p">Transfer</button></form></div>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Stock across all locations</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="pick" data-id="stk">Import counts</button><button data-a="xwh">Export</button></span><input type="file" accept=".csv,text/csv" id="f_stk" data-f="stk" hidden></div><div class="tw"><table><tr><th>Product</th><th>SKU</th><th>Warehouse</th>${bs.map(b=>`<th>${esc(b.name)}</th>`).join('')}<th>Total</th><th></th></tr>
+${ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td><b>${ast('main',p.id)}</b></td>${bs.map(b=>`<td>${ast(b.id,p.id)}</td>`).join('')}<td>${ast('main',p.id)+bs.reduce((a,b)=>a+ast(b.id,p.id),0)}</td><td><button data-a="adjust" data-id="${p.id}">Adjust warehouse</button></td></tr>`).join('')||'<tr><td colspan="9" class="mu">Add products first.</td></tr>'}</table></div></div>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Movement history</h3><button data-a="xmoves">Export</button></div><div class="tw"><table><tr><th>Date</th><th>Type</th><th>Product</th><th class="r">Qty</th><th>From</th><th>To</th><th>By</th><th>Note</th></tr>
+${st.moves.map(m=>`<tr><td>${fdt(m.ts)}</td><td><span class="tag retail">${MT[m.type]||m.type}</span></td><td>${esc(m.name)}</td><td class="r">${m.type==='adjust'&&m.qty>0?'+':''}${m.qty}</td><td>${esc(loc(m.from))}</td><td>${esc(loc(m.to))}</td><td>${esc(m.uname)}</td><td>${esc(m.note)}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No movements yet.</td></tr>'}</table></div></div>`}
 function render(){const a=$('app');document.title=appName();if(!auth)return;
  if(st.me===undefined){a.innerHTML='<p class="mu" style="padding:24px">Loading…</p>';return}
  if(!st.me){a.innerHTML=authV();$('m').innerHTML='';return}
@@ -186,13 +203,19 @@ function render(){const a=$('app');document.title=appName();if(!auth)return;
  const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span>${esc(bname(st.me.branch))}</span>`}${net()}<span class="sm mu">${esc(st.me.name)} · ${st.me.role}</span><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
 <nav>${tabs().map(t=>`<button class="${st.tab===t[0]?'on':''}" data-a="tab" data-id="${t[0]}">${t[1]}</button>`).join('')}</nav>`;
  const f=document.activeElement,keep=f&&f.id==='qs';
- a.innerHTML=hdr+'<main>'+({pos:posV,sales:salesV,products:prodV,branches:branchV,users:usersV}[st.tab])()+'</main>';
+ a.innerHTML=hdr+'<main>'+({pos:posV,sales:salesV,products:prodV,warehouse:whV,branches:branchV,users:usersV}[st.tab])()+'</main><p class="sm mu" style="text-align:center;padding:10px">Build '+BUILD+'</p>';
  $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):'';
  if(keep){const i=$('qs');i.focus();i.setSelectionRange(st.q.length,st.q.length)}}
 
 /* ---------- actions ---------- */
 const A={
  clr:()=>{st.from=st.to='';render()},
+ pick:id=>$('f_'+id).click(),
+ xwh:()=>dl('stock-all-locations',[['Product','SKU','Warehouse',...st.branches.map(b=>b.name),'Total'],...st.products.map(p=>[p.name,p.sku,ast('main',p.id),...st.branches.map(b=>ast(b.id,p.id)),ast('main',p.id)+st.branches.reduce((a,b)=>a+ast(b.id,p.id),0)])]),
+ xmoves:()=>dl('stock-movements',[['Date','Type','Product','SKU','Qty','From','To','By','Note'],...st.moves.map(m=>[fdt(m.ts),MT[m.type]||m.type,m.name,m.sku,m.qty,loc(m.from),loc(m.to),m.uname,m.note])]),
+ async adjust(id){const p=prod(id),c0=ast('main',id),v=prompt('Counted quantity in the warehouse for '+p.name,c0);if(v===null)return;const n=parseInt(v);
+  if(!(n>=0))return toast('Enter 0 or more.');if(n===c0)return;
+  try{const b=writeBatch(db);b.set(doc(db,'stock','main_'+id),{branch:'main',product:id,qty:n},{merge:true});mv(b,'adjust',p,n-c0,'main','main','Stock count correction');await b.commit();toast('Warehouse count updated.')}catch(e){toast(e.message)}},
  async delsale(id){const s=st.sales.find(x=>x.id===id);if(!s||!isAdmin())return;
   if(!confirm(`Delete sale ${s.no} (${cur(s.total)})? Any refunds on it are removed too. This cannot be undone.`))return;
   const rs=st.refunds.filter(r=>r.sale===id),back=confirm('Return the items from this sale to stock?\n\nOK = return to stock\nCancel = leave stock as it is');
@@ -230,6 +253,7 @@ const A={
    items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
    await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render()}catch(e){toast('Sale failed: '+e.message)}}};
 const C={
+ tf:(id,v)=>{st.tf.q=$('tfq')?.value||'';st.tf.n=$('tfn')?.value||'';st.tf[id]=v;render()},
  from:(_,v)=>{st.from=v;render()},to:(_,v)=>{st.to=v;render()},
  uprice:(id,v)=>{st.cart.find(x=>x.id===id).price=Math.max(0,+v||0);render()},
  qty:(id,v)=>{st.cart.find(x=>x.id===id).qty=Math.max(0,parseInt(v)||0);render()},
@@ -253,12 +277,60 @@ const F={
   try{const batch=writeBatch(db);batch.set(doc(collection(db,'refunds')),{...r,ts:new Date()});
    if(r.restock)items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(i.qty)},{merge:true}));
    await batch.commit();st.rf=null;st.rc={...r,ts:Date.now(),refund:true};render()}catch(e){toast('Refund failed: '+e.message)}},
+ async receive(f){const d=Object.fromEntries(new FormData(f)),p=prod(d.p),q=parseInt(d.q);
+  if(!p||!(q>0))return toast('Choose a product and a quantity above 0.');
+  try{const b=writeBatch(db);b.set(doc(db,'stock','main_'+p.id),{branch:'main',product:p.id,qty:increment(q)},{merge:true});mv(b,'receive',p,q,'supplier','main',d.n.trim());await b.commit();f.reset();toast(q+' × '+p.name+' received into the warehouse.')}catch(e){toast(e.message)}},
+ async transfer(f){const d=Object.fromEntries(new FormData(f)),p=prod(d.p),q=parseInt(d.q),fr=d.fr,to=d.to;
+  if(!p||!(q>0)||!to)return toast('Choose a product, a destination and a quantity above 0.');
+  if(fr===to)return toast('From and To must be different.');
+  const have=ast(fr,p.id);if(q>have)return toast(`Only ${have} of ${p.name} at ${loc(fr)}.`);
+  try{const b=writeBatch(db);b.set(doc(db,'stock',fr+'_'+p.id),{branch:fr,product:p.id,qty:increment(-q)},{merge:true});b.set(doc(db,'stock',to+'_'+p.id),{branch:to,product:p.id,qty:increment(q)},{merge:true});
+   mv(b,fr==='main'?'distribute':to==='main'?'return':'transfer',p,q,fr,to,d.n.trim());await b.commit();st.tf.q='';st.tf.n='';toast(`${q} × ${p.name}: ${loc(fr)} → ${loc(to)}.`)}catch(e){toast(e.message)}},
  async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)));toast('Saved.')}catch(e){toast(e.message)}}};
+/* ---------- CSV import (files made by this app's Export buttons) ---------- */
+const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false;
+ for(let i=0;i<t.length;i++){const c=t[i];
+  if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c==='"')q=true;else if(c===','){r.push(f);f=''}
+  else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;r.push(f);f='';rows.push(r);r=[]}else f+=c}
+ if(f!==''||r.length){r.push(f);rows.push(r)}return rows.filter(r=>r.some(x=>x.trim()!==''))};
+const hmap=h=>Object.fromEntries(h.map((x,i)=>[x.trim().toLowerCase(),i]));
+const I={
+ async inv(file,el){if(!file)return;const rows=parseCSV(await file.text());el.value='';if(rows.length<2)return toast('The file is empty.');
+  const H=hmap(rows[0]);
+  if(['product','sku','retail price','wholesale price'].some(k=>H[k]===undefined))return toast(H.receipt!==undefined||H['refund no.']!==undefined?'Sales, refunds and staff exports are reports for reading and cannot be imported.':'This is not an inventory export. Use Products & stock → Export inventory.');
+  const b=brId(),qb=H.quantity!==undefined&&b&&b!=='all',num=(r,k,d)=>{const v=H[k]===undefined?'':(r[H[k]]||'').trim();return v===''?d:+v};
+  const items=new Map(),bad=[];
+  rows.slice(1).forEach((r,i)=>{const name=(r[H.product]||'').trim(),sku=(r[H.sku]||'').trim(),rp=num(r,'retail price',NaN),wp=num(r,'wholesale price',NaN);
+   if(!name||!sku||!(rp>=0)||!(wp>=0))return bad.push(i+2);
+   const q=H.quantity===undefined?null:num(r,'quantity',NaN);
+   items.set(sku.toLowerCase(),{name,sku,rp,rmp:Math.min(num(r,'retail min price',rp),rp),wp,wmp:Math.min(num(r,'wholesale min price',wp),wp),q:Number.isFinite(q)&&q>=0?Math.floor(q):null})});
+  if(!items.size)return toast('No valid rows found.'+(bad.length?' Check row(s) '+bad.slice(0,5).join(', ')+'.':''));
+  const ex=new Map(st.products.map(p=>[String(p.sku).toLowerCase(),p])),list=[...items.entries()],nw=list.filter(([k])=>!ex.has(k)).length;
+  if(!confirm(`Import ${list.length} products: ${nw} new, ${list.length-nw} to update.\n`+(qb?`Quantities will be set at ${bname(b)}.`:'Quantities will not be changed (pick a single branch in the header to import them).')+(bad.length?`\n${bad.length} invalid row(s) will be skipped.`:'')+'\n\nContinue?'))return;
+  try{for(let i=0;i<list.length;i+=200){const bt=writeBatch(db);
+    list.slice(i,i+200).forEach(([k,v])=>{const old=ex.get(k),ref=old?doc(db,'products',old.id):doc(collection(db,'products')),{q,...d}=v;bt.set(ref,d);if(qb&&q!==null)bt.set(doc(db,'stock',b+'_'+ref.id),{branch:b,product:ref.id,qty:q},{merge:true})});
+    await bt.commit()}
+   toast(`Imported ${list.length} products.`+(bad.length?` Skipped ${bad.length} invalid row(s).`:''))}catch(e){toast('Import failed: '+e.message)}},
+ async stk(file,el){if(!file)return;const rows=parseCSV(await file.text());el.value='';const H=hmap(rows[0]||[]);
+  if(H.sku===undefined||H.warehouse===undefined)return toast('This is not a stock export. Use Stock across all locations → Export.');
+  const cols=[['main',H.warehouse],...st.branches.filter(b=>H[b.name.trim().toLowerCase()]!==undefined).map(b=>[b.id,H[b.name.trim().toLowerCase()]])];
+  const ex=new Map(st.products.map(p=>[String(p.sku).toLowerCase(),p])),ops=[];let miss=0;
+  rows.slice(1).forEach(r=>{const p=ex.get((r[H.sku]||'').trim().toLowerCase());if(!p)return miss++;
+   cols.forEach(([l,ci])=>{const v=(r[ci]||'').trim();if(v==='')return;const n=Math.floor(+v);if(!(n>=0)||n===ast(l,p.id))return;ops.push([p,l,n])})});
+  if(!ops.length)return toast('Nothing to change: the counts already match'+(miss?`. ${miss} unknown SKU(s) skipped.`:'.'));
+  if(!confirm(`Update ${ops.length} stock count(s) across ${cols.length} location(s)?`+(miss?`\n${miss} row(s) with unknown SKUs will be skipped.`:'')+'\nEach change is logged as an adjustment.\n\nContinue?'))return;
+  try{for(let i=0;i<ops.length;i+=200){const bt=writeBatch(db);
+    ops.slice(i,i+200).forEach(([p,l,n])=>{bt.set(doc(db,'stock',l+'_'+p.id),{branch:l,product:p.id,qty:n},{merge:true});mv(bt,'adjust',p,n-ast(l,p.id),l,l,'Imported from file')});
+    await bt.commit()}
+   toast(`Updated ${ops.length} stock count(s).`)}catch(e){toast('Import failed: '+e.message)}}};
 document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t)return;if(t.tagName==='A')e.preventDefault();A[t.dataset.a]?.(t.dataset.id,t,e)});
 document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.s){e.preventDefault();F[f.dataset.s](f)}});
-document.addEventListener('change',e=>{const t=e.target;if(t.dataset.c)C[t.dataset.c](t.dataset.id,t.value)});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.c)C[t.dataset.c](t.dataset.id,t.value);if(t.dataset.f)I[t.dataset.f](t.files[0],t)});
 document.addEventListener('input',e=>{if(e.target.dataset.i==='q'){st.q=e.target.value;$('gr').innerHTML=gridV()}});
 addEventListener('online',()=>render());addEventListener('offline',()=>render());
 render();
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!window._rl){window._rl=1;location.reload()}});   // new version took over: reload once
+ addEventListener('load',()=>navigator.serviceWorker.register('sw.js').then(r=>r.update()).catch(()=>{}))}
 </script></body></html>

@@ -1,6 +1,6 @@
 /* DANEST POS service worker: caches the app shell so it opens fast and loads offline.
    Firestore/Auth traffic is never cached, so sales and stock always come live from Firebase. */
-const CACHE = 'danest-pos-shell-v3';
+const CACHE = 'danest-pos-shell-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -16,7 +16,7 @@ self.addEventListener('fetch', e => {
   const sdk = u.hostname === 'www.gstatic.com' && u.pathname.startsWith('/firebasejs/');
   if (!sameOrigin && !sdk) return;               // Firestore, Auth, fonts etc. go straight to the network
   if (r.mode === 'navigate') {                   // pages: network first, cached copy when offline
-    e.respondWith(fetch(r).then(res => { caches.open(CACHE).then(c => c.put('./index.html', res.clone())); return res; })
+    e.respondWith(fetch(r.url, { cache: 'no-store' }).then(res => { caches.open(CACHE).then(c => c.put('./index.html', res.clone())); return res; })
       .catch(() => caches.match('./index.html')));
     return;
   }
