@@ -67,7 +67,6 @@ import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,sendPasswordResetEmail} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection as _collection,doc as _doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,orderBy,limit,writeBatch as _writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 /* Multi-shop: each shop's data lives under orgs/{shopCode}/... Only 'users' stays at the top level. */
 const ROOT=['users','orgs','platform'];
 const collection=(d,n)=>ROOT.includes(n)?_collection(d,n):_collection(d,'orgs',st.org,n);
@@ -107,7 +106,7 @@ try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(
 /* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
 const fp=p=>p.length<6?p+'#pos-pad':p;
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b14';
+const BUILD='2026.10.18-b16';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -134,12 +133,26 @@ function watchBranch(){clear(bsubs);const b=brId();if(!st.me?.role)return;
  if(b)bsubs.push(onSnapshot(sq,{includeMetadataChanges:true},s=>{st.pend.s=s.metadata.hasPendingWrites;st.sales=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,c)=>ms(c.ts)-ms(a.ts));render()},e=>toast(e.message)))}
 
 /* ---------- views ---------- */
+/* Creates a new shop with a 14-day trial. Done in one batch; the security rules check it (no server needed). */
+async function regShop(shop,name,phone){
+ if(!navigator.onLine)throw new Error('You need an internet connection to register a shop.');
+ const u=auth.currentUser,code=[...crypto.getRandomValues(new Uint8Array(3))].map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
+ const plan={plan:'trial',planName:'Free trial',status:'trialing',expiresAt:new Date(Date.now()+14*864e5),maxBranches:2,maxUsers:5},b=_writeBatch(db);
+ b.set(_doc(db,'orgs',code),{name:shop,owner:u.uid,ownerName:name,ownerPhone:phone,ownerEmail:u.email,...plan,created:serverTimestamp()});
+ b.set(_doc(db,'orgs',code,'billing','subscription'),{...plan,features:{warehouse:true,refunds:true,exports:true,imports:true}});
+ b.set(_doc(db,'orgs',code,'settings','shop'),{name:shop});
+ b.set(_doc(db,'orgs',code,'branches','b1'),{name:'Main branch'});
+ b.set(_doc(db,'users',u.uid),{name,phone,email:u.email,org:code,role:'admin',branch:null,active:true,created:serverTimestamp()});
+ await b.commit()}
 const jmF=()=>`<select data-c="jm"><option value="new" ${st.jm==='new'?'selected':''}>Register a new shop (14-day free trial)</option><option value="join" ${st.jm==='join'?'selected':''}>Join an existing shop as staff</option></select>`+(st.jm==='new'?'<input name="shop" placeholder="Shop / business name" required>':'<input name="code" placeholder="Shop code (ask your shop admin)" required>');
 const authV=()=>`<div class="card auth"><h1 style="display:flex;align-items:center;gap:10px">${logo(36)}${esc(appName())}</h1><p class="mu">Log in with your staff account. New accounts wait for an admin to assign a role and branch.</p>
 <div class="seg"><button class="${st.am==='in'?'on':''}" data-a="am" data-id="in">Log in</button><button class="${st.am==='up'?'on':''}" data-a="am" data-id="up">Create account</button></div>
 <form class="fm" data-s="auth">${st.am==='up'?jmF()+'<input name="n" placeholder="Full name" required><input name="ph" type="tel" placeholder="Phone number" pattern="[0-9+() -]{7,20}" title="7 to 20 digits. You may use + ( ) and -" autocomplete="tel" required>':''}<input name="e" type="email" placeholder="Email" required><input name="p" type="password" placeholder="Password (any length)" required><button class="p">${st.am==='up'?'Create account':'Log in'}</button></form>
 ${st.am==='in'?'<p class="sm"><a href="#" data-a="reset">Forgot password?</a></p>':''}</div>`;
-const waitV=()=>{const m=st.me;return `<div class="card auth"><h2>${m.active===false?'Account disabled':'Waiting for access'}</h2><p class="mu">${m.active===false?'An admin has disabled this account.':!m.org?'This account is not linked to a shop. Contact support.':m.role?'An admin still needs to assign you to a branch.':'An admin needs to assign your role and branch. Ask them, then refresh.'}</p><button data-a="out">Log out</button></div>`};
+const setupV=()=>`<div class="card auth"><h2>Finish setting up</h2><p class="mu">You are logged in, but your account is not linked to a shop yet. Complete this form to continue.</p>
+<form class="fm" data-s="setup">${jmF()}<input name="n" placeholder="Your full name" required><input name="ph" type="tel" placeholder="Phone number" pattern="[0-9+() -]{7,20}" required><button class="p">Continue</button></form>
+<p id="serr" class="sm" style="color:var(--dg)"></p><button data-a="out">Log out</button></div>`;
+const waitV=()=>{const m=st.me;if(!m.org)return setupV();return `<div class="card auth"><h2>${m.active===false?'Account disabled':'Waiting for access'}</h2><p class="mu">${m.active===false?'An admin has disabled this account.':!m.org?'This account is not linked to a shop. Contact support.':m.role?'An admin still needs to assign you to a branch.':'An admin needs to assign your role and branch. Ask them, then refresh.'}</p><button data-a="out">Log out</button></div>`};
 const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock']]:[]),...(isAdmin()?[['warehouse','Warehouse'],['billing','Billing & plan'],['branches','Branches & shop'],['users','Users']]:[]),...(st.me.superAdmin?[['platform','Platform (owner)']]:[])];
 
 const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku).toLowerCase().includes(st.q.toLowerCase()));
@@ -310,12 +323,12 @@ const C={
 const upd=async(id,d)=>{try{await updateDoc(doc(db,'users',id),d)}catch(e){toast(e.message)}};
 const F={
  async auth(f){const d=Object.fromEntries(new FormData(f));try{
-  if(st.am==='up'){const r=await createUserWithEmailAndPassword(auth,d.e,fp(d.p));st.jm==='new'?await httpsCallable(getFunctions(auth.app),'registerShop')({shop:d.shop.trim(),name:d.n.trim(),phone:d.ph.trim()}):await setDoc(doc(db,'users',r.user.uid),{name:d.n.trim(),phone:d.ph.trim(),email:d.e,org:d.code.trim().toUpperCase(),role:null,branch:null,active:true,created:serverTimestamp()})}
+  if(st.am==='up'){const r=await createUserWithEmailAndPassword(auth,d.e,fp(d.p));st.jm==='new'?await regShop(d.shop.trim(),d.n.trim(),d.ph.trim()):await setDoc(doc(db,'users',r.user.uid),{name:d.n.trim(),phone:d.ph.trim(),email:d.e,org:d.code.trim().toUpperCase(),role:null,branch:null,active:true,created:serverTimestamp()})}
   else await signInWithEmailAndPassword(auth,d.e,fp(d.p))}catch(e){toast(e.code==='auth/network-request-failed'?'No internet. Log in once while online; after that the app works offline.':e.code==='auth/weak-password'?'Firebase Authentication requires at least 6 characters.':e.message.replace('Firebase: ',''))}},
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
   try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),rp:+d.rp,rmp,wp:+d.wp,wmp});const b=brId();if(d.qty!==undefined&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
- async branch(f){if(st.branches.length>=(st.sub?.maxBranches||1))return toast(`Your plan allows ${st.sub?.maxBranches||1} branch(es). Upgrade to add more.`);try{await addDoc(collection(db,'branches'),{name:new FormData(f).get('n').trim()});f.reset()}catch(e){toast(e.message)}},
+ async branch(f){if(st.branches.length>=(st.sub?.maxBranches||1))return toast(`Your plan allows ${st.sub?.maxBranches||1} branch(es). Upgrade to add more.`);try{{const used=new Set(st.branches.map(b=>b.id));let k=1;while(used.has('b'+k))k++;await setDoc(doc(db,'branches','b'+k),{name:new FormData(f).get('n').trim()})}f.reset()}catch(e){toast(e.message)}},
  async refund(f){const s=st.rf,d=new FormData(f),b=s.branch;
   const items=s.items.map(i=>({id:i.id,name:i.name,price:i.price,qty:parseInt(d.get('q_'+i.id))||0})).filter(i=>i.qty>0);
   if(!items.length)return toast('Enter a quantity to refund.');
@@ -346,6 +359,12 @@ const F={
    if(d.push==='on'){const sh=st.shops.filter(o=>o.plan===id);for(let i=0;i<sh.length;i+=150){const b=writeBatch(db);
      sh.slice(i,i+150).forEach(o=>{b.update(doc(db,'orgs',o.id,'billing','subscription'),{planName:p.name,maxBranches:p.maxBranches,maxUsers:p.maxUsers,features:p.features});b.update(doc(db,'orgs',o.id),{planName:p.name,maxBranches:p.maxBranches,maxUsers:p.maxUsers})});await b.commit()}}
    toast('Plan saved.'+(d.push==='on'?' Shops on this plan were updated.':''))}catch(e){toast(e.message)}},
+ async setup(f){const d=Object.fromEntries(new FormData(f)),e=$('serr');
+  const msg=x=>x.message||String(x);
+  try{e.textContent='Setting up…';
+   if(st.jm==='new')await regShop(d.shop.trim(),d.n.trim(),d.ph.trim());
+   else{try{await setDoc(doc(db,'users',st.uid),{name:d.n.trim(),phone:d.ph.trim(),email:auth.currentUser.email,org:d.code.trim().toUpperCase(),role:null,branch:null,active:true,created:serverTimestamp()})}catch(_){throw new Error('Could not join. Check the shop code and try again.')}}
+   e.textContent=''}catch(x){const t=msg(x);if(e)e.textContent=t;toast(t)}},
  async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)));toast('Saved.')}catch(e){toast(e.message)}}};
 /* ---------- CSV import (files made by this app's Export buttons) ---------- */
 const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false;
