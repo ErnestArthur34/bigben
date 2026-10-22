@@ -51,6 +51,7 @@ button.d{color:var(--dg)}:focus-visible{outline:2px solid var(--ac);outline-offs
 @page{size:80mm auto;margin:3mm}
 @page labels{size:A4;margin:8mm}
 .sheet{page:labels}.lbl{width:50mm;border:1px dotted #999;padding:2mm;text-align:center;font:11px/1.25 system-ui,sans-serif;break-inside:avoid;color:#000;background:#fff}
+.rc.p58{font-size:11px}
 .lbl svg{width:100%;height:14mm;display:block;margin:1mm 0}.lbl .ln{font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.lbl .lc{font:11px ui-monospace,monospace}
 @media print{body>*:not(#m){display:none!important}.modal{position:static;background:none;padding:0;display:block}.rc{max-width:none;border:0;background:#fff;color:#000;max-height:none;overflow:visible}.noprint{display:none!important}}
 </style></head><body>
@@ -83,7 +84,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=(t,ms=3500)=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',ms)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -109,7 +110,7 @@ try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(
 /* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
 const fp=p=>p.length<6?p+'#pos-pad':p;
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b20';
+const BUILD='2026.10.18-b21';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -147,6 +148,57 @@ async function regShop(shop,name,phone){
  b.set(_doc(db,'orgs',code,'branches','b1'),{name:'Main branch'});
  b.set(_doc(db,'users',u.uid),{name,phone,email:u.email,org:code,role:'admin',branch:null,active:true,created:serverTimestamp()});
  await b.commit()}
+/* ---------- printing: paper width, direct thermal (ESC/POS), cash drawer, logo ---------- */
+const PPD={paper:'80',mode:'browser',cut:true,drawer:false,auto:false,baud:'9600'};
+const PP=()=>{try{return{...PPD,...JSON.parse(localStorage.getItem('pos_printer')||'{}')}}catch(e){return PPD}};
+const setPP=o=>{try{localStorage.setItem('pos_printer',JSON.stringify({...PP(),...o}))}catch(e){}};
+const applyPaper=()=>{let e=$('pg');if(!e){e=document.createElement('style');e.id='pg';document.head.appendChild(e)}const w=PP().paper==='58'?58:80;e.textContent=`@page{size:${w}mm auto;margin:${w===58?2:3}mm}`};
+let pr=null;   // the connected printer: {name, write(bytes), close()}
+async function openSerial(port){await port.open({baudRate:+PP().baud});const w=port.writable.getWriter();pr={name:'Serial / Bluetooth printer',write:b=>w.write(b),close:async()=>{w.releaseLock();await port.close()}}}
+async function openUsb(d){await d.open();if(!d.configuration)await d.selectConfiguration(1);let ep,ifn;
+ for(const i of d.configuration.interfaces)for(const a of i.alternates)for(const e of a.endpoints)if(e.direction==='out'&&e.type==='bulk'&&ep===undefined){ep=e.endpointNumber;ifn=i.interfaceNumber}
+ if(ep===undefined)throw new Error('No printer endpoint found on this USB device.');await d.claimInterface(ifn);
+ pr={name:d.productName||'USB printer',write:async b=>{for(let i=0;i<b.length;i+=4096)await d.transferOut(ep,b.slice(i,i+4096))},close:async()=>{await d.releaseInterface(ifn);await d.close()}}}
+async function restorePrinter(){try{if(PP().mode!=='direct')return;
+ if(navigator.serial){const p=await navigator.serial.getPorts();if(p[0]){await openSerial(p[0]);return}}
+ if(navigator.usb){const d=await navigator.usb.getDevices();if(d[0])await openUsb(d[0])}}catch(e){}}
+async function sendBytes(b){if(!pr)throw new Error('Printer not connected.');await pr.write(b)}
+const kick=()=>sendBytes(Uint8Array.from([27,112,0,25,250]));   // ESC p: open the cash drawer
+const ascii=t=>String(t??'').replace(/₵/g,'GHS ').replace(/×/g,'x').replace(/[·—–]/g,'-').normalize('NFD').replace(/[^\x20-\x7e]/g,'');
+const wrapT=(t,W)=>{t=ascii(t);const r=[];while(t.length>W){let k=t.lastIndexOf(' ',W);if(k<1)k=W;r.push(t.slice(0,k));t=t.slice(k).trimStart()}r.push(t);return r};
+const padT=(a,b,W)=>{a=ascii(a);b=ascii(b);const sp=W-a.length-b.length;return sp>0?a+' '.repeat(sp)+b:a.slice(0,Math.max(1,W-b.length-1))+' '+b};
+async function logoRaster(o){const src=st.cfg.logo;if(!src)return null;const img=new Image();img.src=src;await img.decode();
+ const w=Math.min(o.paper==='58'?240:360,img.width)&~7,h=Math.round(img.height*w/img.width),cv=document.createElement('canvas');cv.width=w;cv.height=h;
+ const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);
+ const d=g.getImageData(0,0,w,h).data,bw=w/8,out=new Uint8Array(8+bw*h);out.set([29,118,48,0,bw&255,bw>>8,h&255,h>>8]);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;if(d[i]*.3+d[i+1]*.59+d[i+2]*.11<140)out[8+y*bw+(x>>3)]|=128>>(x&7)}
+ return out}
+async function rcBytes(s,o){const W=o.paper==='58'?32:48,c=st.cfg,parts=[],B=(...a)=>parts.push(Uint8Array.from(a)),T=t=>parts.push(new TextEncoder().encode(ascii(t)+'\n')),L='-'.repeat(W);
+ B(27,64);if(o.drawer&&s.pay==='Cash')B(27,112,0,25,250);B(27,97,1);
+ if(c.logo){try{const r=await logoRaster(o);if(r){parts.push(r);T('')}}catch(e){}}
+ B(27,69,1);B(29,33,1);wrapT(c.name||appName(),W).forEach(T);B(29,33,0);B(27,69,0);
+ if(c.addr)wrapT(c.addr,W).forEach(T);if(c.tel)T('Tel: '+c.tel);T(bname(s.branch));B(27,97,0);T(L);
+ if(s.refund){B(27,97,1);B(27,69,1);T('REFUND RECEIPT');B(27,69,0);B(27,97,0)}
+ T(padT(s.refund?'Refund no.':'Receipt',s.no,W));if(s.refund)T(padT('Original sale',s.saleNo,W));
+ T(padT('Date',fdt(s.ts),W));T(padT('Cashier',s.uname,W));T(padT('Type',s.mode,W));if(s.customer)T(padT('Customer',s.customer,W));T(L);
+ s.items.forEach(i=>{wrapT(i.name,W).forEach(T);T(padT(`${i.qty} x ${cur(i.price)}`,cur(i.qty*i.price),W))});T(L);
+ B(27,69,1);T(padT(s.refund?'REFUND TOTAL':'TOTAL',(s.refund?'-':'')+cur(s.total),W));B(27,69,0);
+ T(padT(s.refund?'Refunded via':'Paid by',s.pay,W));if(s.refund&&s.reason)wrapT('Reason: '+s.reason,W).forEach(T);
+ if(s.tend&&!s.refund){T(padT('Received',cur(s.tend),W));T(padT('Change',cur(s.tend-s.total),W))}
+ T(L);B(27,97,1);wrapT(c.foot??'Thank you for shopping with us!',W).forEach(T);B(27,97,0);B(27,100,4);if(o.cut)B(29,86,66,0);
+ const out=new Uint8Array(parts.reduce((a,p)=>a+p.length,0));let k=0;parts.forEach(p=>{out.set(p,k);k+=p.length});return out}
+async function printRc(s){if(PP().mode==='direct'){try{await sendBytes(await rcBytes(s,PP()));return}catch(e){toast('Printer problem: '+e.message+' Opening the print window instead.')}}window.print()}
+function afterSale(s){const o=PP();if(o.mode!=='direct'||!pr)return;if(o.auto)printRc(s);else if(o.drawer&&s.pay==='Cash')kick().catch(()=>{})}
+function prV(){const o=PP(),sel=(id,v,l)=>`<option value="${v}" ${o[id]===v?'selected':''}>${l}</option>`,ck=(id,l)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="pp" data-id="${id}" ${o[id]?'checked':''}> ${l}</label>`;
+ return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:460px;font-family:inherit"><h3>🖨 Printer settings <span class="sm mu">(this device only)</span></h3><div class="fm">
+<label>Paper width<select data-c="pp" data-id="paper">${sel('paper','80','80 mm')}${sel('paper','58','58 mm')}</select></label>
+<label>Printing method<select data-c="pp" data-id="mode">${sel('mode','browser','Print window (works with any printer)')}${sel('mode','direct','Direct to thermal printer (ESC/POS)')}</select></label>
+${o.mode==='direct'?`<p class="sm">${pr?`Connected: <b>${esc(pr.name)}</b>`:'Not connected.'}</p>
+<label>Serial speed (baud)<select data-c="pp" data-id="baud">${['9600','19200','38400','115200'].map(b=>sel('baud',b,b)).join('')}</select></label>
+<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="p" data-a="prser">Connect serial / Bluetooth</button><button data-a="prusb">Connect USB</button>${pr?'<button class="d" data-a="prdisc">Disconnect</button>':''}</div>
+${ck('cut','Cut the paper after each receipt')}${ck('drawer','Open the cash drawer on cash sales')}${ck('auto','Print automatically after each sale')}
+<div style="display:flex;gap:6px;flex-wrap:wrap"><button data-a="prtest">Test print</button><button data-a="prdrawer">Open drawer</button></div>`:'<p class="sm mu">The print window uses your normal printer. Switch to Direct for silent printing, paper cutting and the cash drawer.</p>'}
+<button data-a="closerc" data-id="x">Close</button></div></div></div>`}
 /* ---------- barcodes (Code 128) ---------- */
 const C128=["212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213", "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132", "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211", "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313", "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331", "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111", "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214", "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111", "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141", "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141", "114131", "311141", "411131", "211412", "211214", "211232", "2331112"];
 function bc128(t){t=String(t).replace(/[^\x20-\x7e]/g,'?');const v=[104];[...t].forEach(c=>v.push(c.charCodeAt(0)-32));v.push(v.reduce((a,x,i)=>a+(i?x*i:x),0)%103);v.push(106);
@@ -163,10 +215,11 @@ async function camOpen(cb=scanAdd,once=false){if(!('BarcodeDetector' in window))
   document.body.appendChild(el);const v=el.querySelector('video');v.srcObject=stream;await v.play();let last='',lt=0,tm;
   const stop=()=>{clearInterval(tm);stream.getTracks().forEach(t=>t.stop());el.remove()};el.querySelector('#camx').onclick=stop;
   tm=setInterval(async()=>{try{const r=await det.detect(v);if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;cb(c);if(once)stop()}}}catch(_){}},300)}catch(e){toast('Could not open the camera: '+e.message)}}
-function lbV(p){const n=st.lb.n,code=p.barcode||p.sku;
+function lbV(p){const n=st.lb.n,code=p.barcode||p.sku,sz=st.lb.size||'a4',[lw,lh]=sz==='a4'?[0,0]:sz.split('x').map(Number);
+ const css=sz==='a4'?'':`<style>@page labels{size:${lw}mm ${lh}mm;margin:0}@media print{.sheet{display:block!important}.lbl{width:${lw}mm!important;height:${lh}mm!important;border:0!important;padding:1.5mm!important;box-sizing:border-box;break-after:page}.lbl svg{height:${Math.round(lh*0.4)}mm!important}}</style>`;
  return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:660px;font-family:inherit"><h3>Print labels · ${esc(p.name)}</h3>
-<div class="noprint fm row" style="margin-bottom:12px"><label>Copies<input type="number" min="1" max="200" value="${n}" data-c="lbn"></label><label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="lbp" ${st.lb.pr?'checked':''}> Show price</label><button class="p" data-a="print">Print labels</button><button data-a="closerc" data-id="x">Close</button></div>
-<div class="sheet" style="display:flex;flex-wrap:wrap;gap:6px">${Array(n).fill(0).map(()=>`<div class="lbl"><div class="ln">${esc(p.name)}</div>${bc128(code)}<div class="lc">${esc(code)}${st.lb.pr?' · '+cur(p.rp):''}</div></div>`).join('')}</div></div></div>`}
+<div class="noprint fm row" style="margin-bottom:12px"><label>Copies<input type="number" min="1" max="200" value="${n}" data-c="lbn"></label><label>Label size<select data-c="lbs">${[['a4','A4 sheet (many per page)'],['58x40','Roll 58 × 40 mm'],['50x30','Roll 50 × 30 mm'],['40x30','Roll 40 × 30 mm']].map(([v,l])=>`<option value="${v}" ${sz===v?'selected':''}>${l}</option>`).join('')}</select></label><label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="lbp" ${st.lb.pr?'checked':''}> Show price</label><button class="p" data-a="print">Print labels</button><button data-a="closerc" data-id="x">Close</button></div>
+${css}<div class="sheet" style="display:flex;flex-wrap:wrap;gap:6px">${Array(n).fill(0).map(()=>`<div class="lbl"><div class="ln">${esc(p.name)}</div>${bc128(code)}<div class="lc">${esc(code)}${st.lb.pr?' · '+cur(p.rp):''}</div></div>`).join('')}</div></div></div>`}
 const jmF=()=>`<select data-c="jm"><option value="new" ${st.jm==='new'?'selected':''}>Register a new shop (14-day free trial)</option><option value="join" ${st.jm==='join'?'selected':''}>Join an existing shop as staff</option></select>`+(st.jm==='new'?'<input name="shop" placeholder="Shop / business name" required>':'<input name="code" placeholder="Shop code (ask your shop admin)" required>');
 const authV=()=>`<div class="card auth"><h1 style="display:flex;align-items:center;gap:10px">${logo(36)}${esc(appName())}</h1><p class="mu">Log in with your staff account. New accounts wait for an admin to assign a role and branch.</p>
 <div class="seg"><button class="${st.am==='in'?'on':''}" data-a="am" data-id="in">Log in</button><button class="${st.am==='up'?'on':''}" data-a="am" data-id="up">Create account</button></div>
@@ -209,7 +262,7 @@ function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0
 ${ls.map(s=>`<tr><td>${s.no}</td><td>${new Date(ms(s.ts)).toLocaleString()}</td><td>${esc(bname(s.branch))}</td><td>${esc(s.uname)}</td><td><span class="tag ${s.mode}">${s.mode}</span></td><td>${esc(s.customer)||'—'}</td><td class="r">${cur(s.total)}</td><td>${stat(s)?`<span class="tag refunded">${stat(s)}</span>`:''}</td><td><button data-a="rcpt" data-id="${s.id}">Reprint</button>${isAdmin()?` <button class="d" data-a="delsale" data-id="${s.id}">Delete</button>`:''}${st.me.role!=='cashier'&&feat('refunds')&&stat(s)!=='Refunded'?` <button class="d" data-a="rfopen" data-id="${s.id}">Refund</button>`:''}</td></tr>`).join('')||'<tr><td colspan="9" class="mu">No sales yet.</td></tr>'}</table></div></div>
 ${st.me.role!=='cashier'?`<div class="card"><h3>Refunds</h3><div class="tw"><table><tr><th>Refund</th><th>Date</th><th>Sale</th><th>By</th><th>Reason</th><th class="r">Amount</th><th></th></tr>${rfs.map(r=>`<tr><td>${r.no}</td><td>${new Date(ms(r.ts)).toLocaleString()}</td><td>${r.saleNo}</td><td>${esc(r.uname)}</td><td>${esc(r.reason)}</td><td class="r">-${cur(r.total)}</td><td><button data-a="rrcpt" data-id="${r.id}">Reprint</button></td></tr>`).join('')||'<tr><td colspan="7" class="mu">No refunds yet.</td></tr>'}</table></div></div>`:''}`}
 
-const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>App name, shop & receipt details</h3><form class="fm row" data-s="cfg"><label>App name<input name="app" value="${esc(c.app)}" placeholder="DANEST IT SOLUTIONS POS"></label><label>Shop name<input name="name" value="${esc(c.name)}"></label><label>Address<input name="addr" value="${esc(c.addr)}"></label><label>Phone<input name="tel" value="${esc(c.tel)}"></label><label>Currency symbol<input name="cur" value="${esc(c.cur)}" maxlength="4"></label><label>Receipt footer<input name="foot" value="${esc(c.foot??'Thank you for shopping with us!')}"></label><button class="p">Save</button></form></div>
+const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>App name, shop & receipt details</h3><form class="fm row" data-s="cfg"><label>App name<input name="app" value="${esc(c.app)}" placeholder="DANEST IT SOLUTIONS POS"></label><label>Shop name<input name="name" value="${esc(c.name)}"></label><label>Address<input name="addr" value="${esc(c.addr)}"></label><label>Phone<input name="tel" value="${esc(c.tel)}"></label><label>Currency symbol<input name="cur" value="${esc(c.cur)}" maxlength="4"></label><label>Receipt footer<input name="foot" value="${esc(c.foot??'Thank you for shopping with us!')}"></label><button class="p">Save</button></form><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px"><span class="sm mu">Receipt logo</span>${c.logo?`<img src="${c.logo}" alt="" style="height:36px;background:#fff;border:1px solid var(--bd)">`:''}<input type="file" accept="image/*" id="f_logo" data-f="logo" hidden><button data-a="logopick">${c.logo?'Change':'Upload'} logo</button>${c.logo?'<button class="d" data-a="logorm">Remove logo</button>':''}</div></div>
 <div class="card"><h3>Branches</h3><form class="fm row" data-s="branch"><label>New branch name<input name="n" required></label><button class="p">Add branch</button></form>
 <div class="tw"><table><tr><th>Branch</th><th>Staff</th><th></th></tr>${st.branches.map(b=>`<tr><td>${esc(b.name)}</td><td>${st.users.filter(u=>u.branch===b.id).length}</td><td><button data-a="renb" data-id="${b.id}">Rename</button> <button class="d" data-a="delb" data-id="${b.id}">Delete</button></td></tr>`).join('')||'<tr><td colspan="3" class="mu">Add your first branch.</td></tr>'}</table></div></div>`};
 const usersV=()=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Users & roles</h3><button data-a="xusers">Export staff contacts</button></div><p class="mu sm">Admins see every branch. Managers and cashiers work in one assigned branch. Managers edit products and stock; cashiers sell and see their own sales.</p><div class="tw"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th>Role</th><th>Branch</th><th>Status</th></tr>
@@ -221,11 +274,11 @@ function rfV(s){return `<div class="modal" data-a="closerc"><div class="card rc"
 <form class="fm" data-s="refund">${s.items.map(i=>{const mx=i.qty-refd(s.id,i.id);return `<label style="display:grid;grid-template-columns:1fr 80px;gap:8px;align-items:center;color:var(--tx)"><span>${esc(i.name)}<br><span class="sm mu">${cur(i.price)} · ${mx} of ${i.qty} refundable</span></span><input type="number" name="q_${i.id}" min="0" max="${mx}" value="0" ${mx?'':'disabled'}></label>`}).join('')}
 <input name="reason" placeholder="Reason for refund (required)" required><label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" name="restock" checked> Return items to stock</label>
 <div style="display:flex;gap:8px"><button class="p" style="flex:1">Process refund</button><button type="button" style="flex:1" data-a="closerc" data-id="x">Cancel</button></div></form></div></div>`}
-function rcptV(s){const c=st.cfg;return `<div class="modal" data-a="closerc"><div class="card rc" id="rcpt"><div class="ctr"><b style="font-size:16px">${esc(c.name||appName())}</b><br>${esc(c.addr||'')}${c.tel?'<br>Tel: '+esc(c.tel):''}<br>${esc(bname(s.branch))}</div><hr>
+function rcptV(s){const c=st.cfg;return `<div class="modal" data-a="closerc"><div class="card rc ${PP().paper==='58'?'p58':''}" id="rcpt" style="max-width:${PP().paper==='58'?250:340}px">${c.logo?`<div class="ctr"><img src="${c.logo}" alt="" style="max-width:60%;max-height:90px"></div>`:''}<div class="ctr"><b style="font-size:16px">${esc(c.name||appName())}</b><br>${esc(c.addr||'')}${c.tel?'<br>Tel: '+esc(c.tel):''}<br>${esc(bname(s.branch))}</div><hr>
 ${s.refund?'<div class="ctr"><b>REFUND RECEIPT</b></div>':''}<div class="rw"><span>${s.refund?'Refund no.':'Receipt'}</span><span>${s.no}</span></div>${s.refund?`<div class="rw"><span>Original sale</span><span>${s.saleNo}</span></div>`:''}<div class="rw"><span>Date</span><span>${new Date(ms(s.ts)).toLocaleString()}</span></div><div class="rw"><span>Cashier</span><span>${esc(s.uname)}</span></div><div class="rw"><span>Sale type</span><span>${s.mode}</span></div>${s.customer?`<div class="rw"><span>Customer</span><span>${esc(s.customer)}</span></div>`:''}<hr>
 ${s.items.map(i=>`<div>${esc(i.name)}</div><div class="rw"><span>${i.qty} × ${cur(i.price)}</span><span>${cur(i.qty*i.price)}</span></div>`).join('')}<hr>
 <div class="rw"><b>${s.refund?'REFUND TOTAL':'TOTAL'}</b><b>${s.refund?'-':''}${cur(s.total)}</b></div><div class="rw"><span>${s.refund?'Refunded via':'Paid by'}</span><span>${esc(s.pay)}</span></div>${s.refund&&s.reason?`<div>Reason: ${esc(s.reason)}</div>`:''}${s.tend&&!s.refund?`<div class="rw"><span>Received</span><span>${cur(s.tend)}</span></div><div class="rw"><span>Change</span><span>${cur(s.tend-s.total)}</span></div>`:''}<hr><div class="ctr">${esc(c.foot??'Thank you for shopping with us!')}</div>
-<div class="noprint" style="display:flex;gap:8px;margin-top:14px"><button class="p" style="flex:1" data-a="print">Print</button><button style="flex:1" data-a="closerc" data-id="x">Close</button></div></div></div>`}
+<div class="noprint" style="display:flex;gap:8px;margin-top:14px"><button class="p" style="flex:1" data-a="printrc">Print</button><button style="flex:1" data-a="closerc" data-id="x">Close</button></div></div></div>`}
 
 /* ---------- subscription ---------- */
 /* low-stock alerts: a product is "low" when its quantity is at or below its minimum quantity */
@@ -273,11 +326,11 @@ function render(){const a=$('app');document.title=appName();if(!auth)return;
  if(!st.me){a.innerHTML=authV();$('m').innerHTML='';return}
  if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML=waitV();return}
  if(!tabs().some(t=>t[0]===st.tab))st.tab='pos';
- const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span>${esc(bname(st.me.branch))}</span>`}${net()}<span class="sm mu">${esc(st.me.name)} · ${st.me.role}</span><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
+ const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span>${esc(bname(st.me.branch))}</span>`}${net()}<span class="sm mu">${esc(st.me.name)} · ${st.me.role}</span><button data-a="prm">🖨 Printer</button><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
 <nav>${tabs().map(t=>`<button class="${st.tab===t[0]?'on':''}" data-a="tab" data-id="${t[0]}">${t[1]}</button>`).join('')}</nav>`;
  const f=document.activeElement,keep=f&&f.id==='qs';
  a.innerHTML=hdr+banner()+'<main>'+({pos:posV,sales:salesV,products:prodV,warehouse:whV,billing:billV,platform:platV,branches:branchV,users:usersV}[st.tab])()+'</main><p class="sm mu" style="text-align:center;padding:10px">Build '+BUILD+'</p>';
- $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):'';
+ $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):st.prm?prV():'';
  if(!keep&&st.tab==='pos'&&matchMedia('(pointer:fine)').matches&&!document.activeElement.matches('input,select,textarea'))$('qs')?.focus();
  if(keep){const i=$('qs');i.focus();i.setSelectionRange(st.q.length,st.q.length)}}
 
@@ -290,6 +343,14 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ prm:()=>{st.prm=true;render()},printrc:()=>printRc(st.rc),
+ async prser(){try{if(!navigator.serial)return toast('Serial printing needs Chrome or Edge on a computer.');await openSerial(await navigator.serial.requestPort());toast('Printer connected.');render()}catch(e){toast('Could not connect: '+e.message)}},
+ async prusb(){try{if(!navigator.usb)return toast('USB printing is not supported in this browser.');await openUsb(await navigator.usb.requestDevice({filters:[]}));toast('Printer connected.');render()}catch(e){toast('Could not connect: '+e.message+'. On Windows the printer may need a WinUSB driver; try the serial/Bluetooth option or the print window.',8000)}},
+ async prdisc(){try{await pr?.close?.()}catch(_){}pr=null;render()},
+ async prtest(){if(!pr)return toast('Connect the printer first.');try{await sendBytes(await rcBytes({no:'TEST',branch:brId()||'',uname:st.me.name,mode:'retail',pay:'Cash',tend:0,ts:Date.now(),items:[{name:'Test item',qty:1,price:1}],total:1},PP()))}catch(e){toast(e.message)}},
+ async prdrawer(){try{await kick()}catch(e){toast(e.message)}},
+ logopick:()=>$('f_logo').click(),
+ async logorm(){try{await setDoc(doc(db,'settings','shop'),{logo:''},{merge:true});toast('Logo removed.')}catch(e){toast(e.message)}},
  scanbc:()=>camOpen(c=>{const i=document.querySelector('input[name=barcode]');if(i){i.value=c;toast('Barcode captured: '+c)}},true),
  genbc:()=>{const i=document.querySelector('input[name=barcode]');if(!i)return;let c;do{c='2'+String(Math.floor(Math.random()*1e11)).padStart(11,'0')}while(st.products.some(p=>p.barcode===c||String(p.sku)===c));i.value=c},
  lbl:id=>{st.lb={id,n:12,pr:true};render()},
@@ -327,7 +388,7 @@ const A={
  rm:id=>{st.cart=st.cart.filter(x=>x.id!==id);render()},
  edit:id=>{st.ed=id||null;render();scrollTo(0,0)},
  rcpt:id=>{st.rc=st.sales.find(s=>s.id===id);render()},
- closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;render()}},
+ closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;render()}},
  rfopen:id=>{st.rf=st.sales.find(s=>s.id===id);render()},
  rrcpt:id=>{st.rc={...st.refunds.find(r=>r.id===id),refund:true};render()},
  delp:async id=>{if(confirm('Delete this product?'))try{await deleteDoc(doc(db,'products',id))}catch(e){toast(e.message)}},
@@ -342,9 +403,10 @@ const A={
   const s={no:'R'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:m,customer:cu,pay:$('pay').value,tend,items,total:total()};
   try{const batch=writeBatch(db);batch.set(doc(collection(db,'sales')),{...s,ts:new Date()});
    items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
-   await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render();if(lows.length)toast('Low stock: '+lows.join(', ')+'. Time to reorder.',8000)}catch(e){toast('Sale failed: '+e.message)}}};
+   await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render();afterSale(st.rc);if(lows.length)toast('Low stock: '+lows.join(', ')+'. Time to reorder.',8000)}catch(e){toast('Sale failed: '+e.message)}}};
 const C={
  jm:(_,v)=>{st.jm=v;render()},
+ pp:(id,v)=>{setPP({[id]:v});applyPaper();render()},lbs:(_,v)=>{st.lb.size=v;render()},
  lbn:(_,v)=>{st.lb.n=Math.min(200,Math.max(1,parseInt(v)||1));render()},lbp:(_,v)=>{st.lb.pr=!!v;render()},
  tf:(id,v)=>{st.tf.q=$('tfq')?.value||'';st.tf.n=$('tfn')?.value||'';st.tf[id]=v;render()},
  from:(_,v)=>{st.from=v;render()},to:(_,v)=>{st.to=v;render()},
@@ -399,7 +461,7 @@ const F={
    if(st.jm==='new')await regShop(d.shop.trim(),d.n.trim(),d.ph.trim());
    else{try{await setDoc(doc(db,'users',st.uid),{name:d.n.trim(),phone:d.ph.trim(),email:auth.currentUser.email,org:d.code.trim().toUpperCase(),role:null,branch:null,active:true,created:serverTimestamp()})}catch(_){throw new Error('Could not join. Check the shop code and try again.')}}
    e.textContent=''}catch(x){const t=msg(x);if(e)e.textContent=t;toast(t)}},
- async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)));toast('Saved.')}catch(e){toast(e.message)}}};
+ async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)),{merge:true});toast('Saved.')}catch(e){toast(e.message)}}};
 /* ---------- CSV import (files made by this app's Export buttons) ---------- */
 const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false;
  for(let i=0;i<t.length;i++){const c=t[i];
@@ -409,6 +471,9 @@ const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false
  if(f!==''||r.length){r.push(f);rows.push(r)}return rows.filter(r=>r.some(x=>x.trim()!==''))};
 const hmap=h=>Object.fromEntries(h.map((x,i)=>[x.trim().toLowerCase(),i]));
 const I={
+ async logo(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+  const w=Math.min(300,img.width),h=Math.round(img.height*w/img.width),cv=document.createElement('canvas');cv.width=w;cv.height=h;const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);
+  await setDoc(doc(db,'settings','shop'),{logo:cv.toDataURL('image/jpeg',0.8)},{merge:true});toast('Logo saved.')}catch(e){toast('Could not save the logo: '+e.message)}},
  async inv(file,el){if(!file)return;const rows=parseCSV(await file.text());el.value='';if(rows.length<2)return toast('The file is empty.');
   const H=hmap(rows[0]);
   if(['product','sku','retail price','wholesale price'].some(k=>H[k]===undefined))return toast(H.receipt!==undefined||H['refund no.']!==undefined?'Sales, refunds and staff exports are reports for reading and cannot be imported.':'This is not an inventory export. Use Products & stock → Export inventory.');
@@ -443,6 +508,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t
 document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.s){e.preventDefault();F[f.dataset.s](f)}});
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.c)C[t.dataset.c](t.dataset.id,t.type==='checkbox'?t.checked:t.value);if(t.dataset.f)I[t.dataset.f](t.files[0],t)});
 document.addEventListener('input',e=>{if(e.target.dataset.i==='q'){st.q=e.target.value;$('gr').innerHTML=gridV()}});
+applyPaper();restorePrinter();
 addEventListener('online',()=>render());addEventListener('offline',()=>render());
 render();
 if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;
