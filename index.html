@@ -109,7 +109,7 @@ try{if(firebaseConfig.apiKey.startsWith('YOUR'))throw 0;const app=initializeApp(
 /* Firebase rejects passwords under 6 characters, so short ones are padded with a fixed suffix before being sent. Passwords of 6+ characters are sent unchanged. */
 const fp=p=>p.length<6?p+'#pos-pad':p;
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b17';
+const BUILD='2026.10.18-b18';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -157,12 +157,12 @@ function scanAdd(code){const p=findCode(code);if(!p){toast('No product with code
  if(stock(p.id)<1){toast(p.name+' is out of stock.');return false}
  const c=st.cart.find(x=>x.id===p.id);if(c){if(c.qty>=stock(p.id)){toast('Only '+stock(p.id)+' of '+p.name+' in stock.');return false}c.qty++}else st.cart.push({id:p.id,qty:1});
  st.q='';render();return true}
-async function camOpen(){if(!('BarcodeDetector' in window))return toast('Camera scanning is not supported on this browser. Use a USB/Bluetooth scanner, or type the code in the search box.');
+async function camOpen(cb=scanAdd,once=false){if(!('BarcodeDetector' in window))return toast('Camera scanning is not supported on this browser. Use a USB/Bluetooth scanner, or type the code in the search box.');
  try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),det=new BarcodeDetector(),el=document.createElement('div');
   el.className='modal';el.innerHTML='<div class="card" style="max-width:420px;width:100%"><video playsinline muted style="width:100%;border-radius:8px;background:#000"></video><p class="sm mu">Point the camera at a barcode. Each scan adds the item to the cart. Press Done when finished.</p><button class="p" id="camx" style="width:100%">Done</button></div>';
   document.body.appendChild(el);const v=el.querySelector('video');v.srcObject=stream;await v.play();let last='',lt=0,tm;
   const stop=()=>{clearInterval(tm);stream.getTracks().forEach(t=>t.stop());el.remove()};el.querySelector('#camx').onclick=stop;
-  tm=setInterval(async()=>{try{const r=await det.detect(v);if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;scanAdd(c)}}}catch(_){}},300)}catch(e){toast('Could not open the camera: '+e.message)}}
+  tm=setInterval(async()=>{try{const r=await det.detect(v);if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;cb(c);if(once)stop()}}}catch(_){}},300)}catch(e){toast('Could not open the camera: '+e.message)}}
 function lbV(p){const n=st.lb.n,code=p.barcode||p.sku;
  return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:660px;font-family:inherit"><h3>Print labels · ${esc(p.name)}</h3>
 <div class="noprint fm row" style="margin-bottom:12px"><label>Copies<input type="number" min="1" max="200" value="${n}" data-c="lbn"></label><label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="lbp" ${st.lb.pr?'checked':''}> Show price</label><button class="p" data-a="print">Print labels</button><button data-a="closerc" data-id="x">Close</button></div>
@@ -195,7 +195,7 @@ ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder
 
 function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
  return `<div class="card"><h3>${e.id?'Edit product':'New product'}</h3><form class="fm row" data-s="prod"><input type="hidden" name="id" value="${e.id||''}">
-<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label>Barcode<input name="barcode" value="${esc(e.barcode)}" placeholder="scan or type (optional)"></label>
+<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label>Barcode<span style="display:flex;gap:6px"><input name="barcode" style="flex:1" value="${esc(e.barcode)}" placeholder="scan, type or generate"><button type="button" data-a="scanbc" title="Scan with the camera">📷</button><button type="button" data-a="genbc" title="Generate a new code">Auto</button></span></label>
 <label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
 <label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok?'required':'disabled'}></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
@@ -287,6 +287,8 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ scanbc:()=>camOpen(c=>{const i=document.querySelector('input[name=barcode]');if(i){i.value=c;toast('Barcode captured: '+c)}},true),
+ genbc:()=>{const i=document.querySelector('input[name=barcode]');if(!i)return;let c;do{c='2'+String(Math.floor(Math.random()*1e11)).padStart(11,'0')}while(st.products.some(p=>p.barcode===c||String(p.sku)===c));i.value=c},
  lbl:id=>{st.lb={id,n:12,pr:true};render()},
  async addplan(){const n=prompt('Name of the new plan');if(!n||!n.trim())return;const id=n.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'plan'+Date.now();
   if(PL()[id])return toast('A plan with that name already exists.');
