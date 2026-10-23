@@ -87,6 +87,10 @@ header{padding-top:calc(12px + env(safe-area-inset-top,0px));padding-left:max(20
 button.chip{background:transparent;border-color:transparent;padding:4px 12px 4px 4px;color:#fff;border-radius:999px;text-align:left}button.chip:hover{background:rgba(255,255,255,.16);transform:none;border-color:transparent}
 .av{overflow:hidden;flex:none}.av img{width:100%;height:100%;object-fit:cover;display:block}
 .av.lg{width:76px;height:76px;font-size:30px;background:var(--ac);color:var(--on)}.av.s{width:28px;height:28px;font-size:13px;background:var(--ac);color:var(--on)}
+.pi{aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--bg2);display:grid;place-items:center;margin:-4px -4px 8px}.pi img{width:100%;height:100%;object-fit:cover;display:block}.pi i{font:700 30px 'Bricolage Grotesque',sans-serif;color:var(--mu);font-style:normal}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.chipb{padding:5px 14px;border-radius:999px;font-size:13px}
+.pimg{position:relative;width:104px;height:78px;border-radius:12px;overflow:hidden;background:var(--bg2);display:grid;place-items:center;border:1px solid var(--bd)}.pimg img{width:100%;height:100%;object-fit:cover;display:block}
+.pimg .px{position:absolute;top:3px;right:3px;padding:0 7px;font-size:12px;background:rgba(0,0,0,.6);color:#fff;border-color:transparent;border-radius:8px}
 @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}}
 @media(max-width:640px){header{padding:10px 14px}main{padding:14px}nav{padding:8px 12px}.stats b{font-size:22px}}
 @page{size:80mm auto;margin:3mm}
@@ -125,7 +129,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=(t,ms=3500)=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',ms)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,cat:'',pimg:undefined,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -160,7 +164,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  platform:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b27';
+const BUILD='2026.10.18-b28';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -304,8 +308,8 @@ document.addEventListener('keydown',e=>{   // a keyboard-style scanner types the
  if(e.key.length===1)sbuf+=e.key});
 document.addEventListener('visibilitychange',()=>camSync());
 function scanAdd(code){const p=findCode(code);if(!p){toast('No product with code '+code);return false}
- if(stock(p.id)<1){toast(p.name+' is out of stock.');return false}
- const c=st.cart.find(x=>x.id===p.id);if(c){if(c.qty>=stock(p.id)){toast('Only '+stock(p.id)+' of '+p.name+' in stock.');return false}c.qty++}else st.cart.push({id:p.id,qty:1});
+ if(tracked(p)&&stock(p.id)<1){toast(p.name+' is out of stock.');return false}
+ const c=st.cart.find(x=>x.id===p.id);if(c){if(tracked(p)&&c.qty>=stock(p.id)){toast('Only '+stock(p.id)+' of '+p.name+' in stock.');return false}c.qty++}else st.cart.push({id:p.id,qty:1});
  st.q='';beep();render();return true}
 async function camOpen(cb=scanAdd,once=false){if(!camOk())return toast('Camera scanning is not available on this browser. Use a USB/Bluetooth scanner, or type the code.');
  try{toast('Opening the camera…',1500);const det=await getDetector(),stream=await camVideo(),el=document.createElement('div');
@@ -329,15 +333,15 @@ const setupV=()=>`<div class="card auth"><h2>Finish setting up</h2><p class="mu"
 const waitV=()=>{const m=st.me;if(!m.org)return setupV();return `<div class="card auth"><h2>${m.active===false?'Account disabled':'Waiting for access'}</h2><p class="mu">${m.active===false?'An admin has disabled this account.':!m.org?'This account is not linked to a shop. Contact support.':m.role?'An admin still needs to assign you to a branch.':'An admin needs to assign your role and branch. Ask them, then refresh.'}</p><button data-a="out">Log out</button></div>`};
 const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock'+(lowN()?' ⚠ '+lowN():'')]]:[]),...(isAdmin()?[['warehouse','Warehouse'],['billing','Billing & plan'],['branches','Branches & shop'],['users','Users']]:[]),...(st.me.superAdmin?[['platform','Platform (owner)']]:[])];
 
-const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku+(p.barcode||'')).toLowerCase().includes(st.q.toLowerCase()));
- return ps.map(p=>`<button class="prod" ${stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))} · ${stock(p.id)} in stock${low(p)?' <span class="tag refunded">Low</span>':''}</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
+const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku+(p.barcode||'')).toLowerCase().includes(st.q.toLowerCase())&&(!st.cat||p.category===st.cat));
+ return ps.map(p=>`<button class="prod" ${tracked(p)&&stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><div class="pi">${p.image?`<img src="${p.image}" alt="">`:`<i>${esc((p.name||'?').charAt(0).toUpperCase())}</i>`}</div><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))}${tracked(p)?` · ${stock(p.id)} in stock`:''}${low(p)?' <span class="tag refunded">Low</span>':''}</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
 const total=()=>st.cart.reduce((s,c)=>s+up(c)*c.qty,0);
 function posV(){if(!brId()||brId()==='all')return '<div class="card">Select a branch in the header to start selling.</div>';
  st.cart=st.cart.filter(c=>prod(c.id));const m=st.mode;
  return `<div class="pos"><div><div class="mode"><button class="${m==='retail'?'on':''}" data-a="mode" data-id="retail">Retail</button><button class="wh ${m==='wholesale'?'on':''}" data-a="mode" data-id="wholesale">Wholesale</button></div>
-<div style="display:flex;gap:8px;margin-top:10px"><input id="qs" style="flex:1" placeholder="Search, or scan a barcode" value="${esc(st.q)}" data-i="q" autocomplete="off">${scanBtns()}</div><p class="sm mu" style="margin:6px 2px 0">${SC().on?'Scanner is on: just scan a barcode, no need to click anything.':'Scanner is off. Switch it on to scan barcodes.'}</p><div class="grid" id="gr">${gridV()}</div></div>
+<div style="display:flex;gap:8px;margin-top:10px"><input id="qs" style="flex:1" placeholder="Search, or scan a barcode" value="${esc(st.q)}" data-i="q" autocomplete="off">${scanBtns()}</div><p class="sm mu" style="margin:6px 2px 0">${SC().on?'Scanner is on: just scan a barcode, no need to click anything.':'Scanner is off. Switch it on to scan barcodes.'}</p>${cats().length?`<div class="chips">${['',...cats()].map(c=>`<button class="chipb ${st.cat===c?'on':''}" data-a="cat" data-id="${esc(c)}">${esc(c)||'All'}</button>`).join('')}</div>`:''}<div class="grid" id="gr">${gridV()}</div></div>
 <div class="card" style="align-self:start"><h3>Cart <span class="tag ${m}">${m}</span></h3>
-${st.cart.map(c=>{const p=prod(c.id),bad=c.qty<1||c.qty>stock(p.id),pb=up(c)<minp(p);return `<div class="line"><div>${esc(p.name)}<div class="sm mu">Lowest price ${cur(minp(p))} · ${stock(p.id)} in stock</div><input type="number" step="0.01" min="0" class="${pb?'bad':''}" style="width:96px;padding:4px 6px;margin-top:3px" value="${up(c)}" data-c="uprice" data-id="${c.id}" aria-label="Unit price"></div><input type="number" min="0" class="${bad?'bad':''}" value="${c.qty}" data-c="qty" data-id="${c.id}"><span class="r">${cur(up(c)*c.qty)}</span><button class="d" style="padding:2px 6px" data-a="rm" data-id="${c.id}" aria-label="Remove">✕</button></div>`}).join('')||'<p class="mu">Tap a product to add it.</p>'}
+${st.cart.map(c=>{const p=prod(c.id),bad=c.qty<1||(tracked(p)&&c.qty>stock(p.id)),pb=up(c)<minp(p);return `<div class="line"><div>${esc(p.name)}<div class="sm mu">Lowest price ${cur(minp(p))}${tracked(p)?` · ${stock(p.id)} in stock`:''}</div><input type="number" step="0.01" min="0" class="${pb?'bad':''}" style="width:96px;padding:4px 6px;margin-top:3px" value="${up(c)}" data-c="uprice" data-id="${c.id}" aria-label="Unit price"></div><input type="number" min="0" class="${bad?'bad':''}" value="${c.qty}" data-c="qty" data-id="${c.id}"><span class="r">${cur(up(c)*c.qty)}</span><button class="d" style="padding:2px 6px" data-a="rm" data-id="${c.id}" aria-label="Remove">✕</button></div>`}).join('')||'<p class="mu">Tap a product to add it.</p>'}
 ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder="Customer / business name">':''}
 <select id="pay" style="width:100%;margin-top:10px"><option>Cash</option><option>Card</option><option>Mobile money</option><option>Credit</option></select>
 <input id="tend" type="number" step="0.01" min="0" style="width:100%;margin-top:10px" placeholder="Amount received (optional, shows change)">
@@ -345,13 +349,13 @@ ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder
 <button class="p" style="width:100%" data-a="checkout">Complete sale</button></div></div>`}
 
 function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
- return `<div class="card"><h3>${e.id?'Edit product':'New product'}</h3><form class="fm row" data-s="prod"><input type="hidden" name="id" value="${e.id||''}">
-<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label style="grid-column:1/-1">Barcode<span style="display:flex;gap:6px;min-width:0;max-width:560px"><input name="barcode" style="flex:1;min-width:0" value="${esc(e.barcode)}" placeholder="scan, type or generate"><button type="button" style="flex:none" data-a="scanbc" title="Scan with the camera">📷 Scan</button><button type="button" style="flex:none" data-a="genbc" title="Generate a new code">Auto</button></span></label>
+ return `<div class="card"><h3>${e.id?'Edit product':'New product'}</h3><form class="fm row" data-s="prod"><input type="hidden" name="id" value="${e.id||''}"><label>Item type<select name="type" data-c="ptype"><option value="item" ${!e.noStock?'selected':''}>Inventory item (stock is counted)</option><option value="service" ${e.noStock?'selected':''}>Non-inventory (menu item or service)</option></select></label><label>Category<input name="category" list="cats" value="${esc(e.category)}" placeholder="e.g. Drinks, Meals"><datalist id="cats">${cats().map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>
+<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label style="grid-column:1/-1">Barcode<span style="display:flex;gap:6px;min-width:0;max-width:560px"><input name="barcode" style="flex:1;min-width:0" value="${esc(e.barcode)}" placeholder="scan, type or generate"><button type="button" style="flex:none" data-a="scanbc" title="Scan with the camera">📷 Scan</button><button type="button" style="flex:none" data-a="genbc" title="Generate a new code">Auto</button></span></label><div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="pimg" id="pimgprev">${pimgHtml(st.pimg!==undefined?st.pimg:(e.image||''))}</span><input type="file" accept="image/*" capture="environment" id="f_pimgc" data-f="pimg" hidden><input type="file" accept="image/*" id="f_pimgu" data-f="pimg" hidden><button type="button" data-a="pimgcam">📷 Take photo</button><button type="button" data-a="pimgup">Upload image</button><span class="sm mu">Product picture (optional)</span></div>
 <label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
-<label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok?'required':'disabled'}></label><label>Minimum quantity (low-stock alert)<input name="minStock" type="number" min="0" step="1" value="${e.minStock??0}" placeholder="0 = no alert"></label>
+<label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label class="invf" ${e.noStock?'style="display:none"':''}>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" data-ok="${ok?1:0}" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok&&!e.noStock?'required':'disabled'}></label><label class="invf" ${e.noStock?'style="display:none"':''}>Minimum quantity (low-stock alert)<input name="minStock" ${e.noStock?'disabled':''} type="number" min="0" step="1" value="${e.minStock??0}" placeholder="0 = no alert"></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
 ${ok&&lowN()?lowCard():''}<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="pick" data-id="inv">Import CSV</button><button data-a="xstock">Export inventory</button></span><input type="file" accept=".csv,text/csv" id="f_inv" data-f="inv" hidden></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Barcode</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th>Min qty</th><th></th></tr>
-${st.products.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td>${esc(p.barcode)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td>${p.minStock||'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> <button data-a="lbl" data-id="${p.id}">Labels</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="10" class="mu">No products yet.</td></tr>'}</table></div></div>`}
+${st.products.map(p=>`<tr><td><span style="display:flex;align-items:center;gap:8px"><span class="av s" style="border-radius:8px">${thumb(p)}</span>${esc(p.name)}${tracked(p)?'':' <span class="tag retail">No stock</span>'}</span></td><td>${esc(p.sku)}</td><td>${esc(p.barcode)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'&&tracked(p)?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td>${p.minStock||'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> <button data-a="lbl" data-id="${p.id}">Labels</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="10" class="mu">No products yet.</td></tr>'}</table></div></div>`}
 
 function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
  return `<div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"><label class="sm mu" style="display:grid;gap:3px">From<input type="date" value="${st.from}" data-c="from"></label><label class="sm mu" style="display:grid;gap:3px">To<input type="date" value="${st.to}" data-c="to"></label><button data-a="clr">All dates</button><span style="flex:1"></span><button data-a="xsales">Export sales</button><button data-a="xitems">Export sale items</button>${st.me.role!=='cashier'?'<button data-a="xrefunds">Export refunds</button>':''}</div>
@@ -380,7 +384,11 @@ ${s.items.map(i=>`<div>${esc(i.name)}</div><div class="rw"><span>${i.qty} × ${c
 
 /* ---------- subscription ---------- */
 /* low-stock alerts: a product is "low" when its quantity is at or below its minimum quantity */
-const low=p=>p.minStock>0&&stock(p.id)<=p.minStock,lowN=()=>st.products.filter(low).length;
+const tracked=p=>!p.noStock;   // non-inventory items (menu items, services) have no stock counting
+const cats=()=>[...new Set(st.products.map(p=>p.category).filter(Boolean))].sort();
+const thumb=p=>p.image?`<img src="${p.image}" alt="">`:esc((p.name||'?').charAt(0).toUpperCase());
+const pimgHtml=u=>u?`<img src="${u}" alt=""><button type="button" class="px" data-a="pimgrm" title="Remove image">✕</button>`:'<span class="mu sm">No image</span>';
+const low=p=>tracked(p)&&p.minStock>0&&stock(p.id)<=p.minStock,lowN=()=>st.products.filter(low).length;
 const lowCard=()=>`<div class="card" style="border-color:var(--dg)"><h3 style="color:var(--dg)">⚠ Low stock (${lowN()})</h3><div class="tw"><table><tr><th>Product</th><th>SKU</th><th class="r">In stock</th><th class="r">Minimum</th><th class="r">To reorder</th></tr>${st.products.filter(low).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td class="r">${stock(p.id)}</td><td class="r">${p.minStock}</td><td class="r">${Math.max(0,p.minStock-stock(p.id))}</td></tr>`).join('')}</table></div></div>`;
 const subOk=()=>!!st.sub&&ms(st.sub.expiresAt)>Date.now(),feat=f=>st.sub?.features?.[f]===true,daysLeft=()=>Math.ceil((ms(st.sub.expiresAt)-Date.now())/864e5);
 /* Default plans, used until the owner saves their own under Platform → Plans & pricing (prices in pesewas: 100 = GHS 1.00). */
@@ -410,7 +418,7 @@ function actV(id){const o=st.shops.find(x=>x.id===id)||{};return `<div class="mo
 const loc=id=>id==='main'?'Warehouse':id==='supplier'?'Supplier':bname(id),ast=(l,p)=>st.allStock[l+'_'+p]||0;
 const MT={receive:'Received',distribute:'Distributed',return:'Returned',transfer:'Transfer',adjust:'Adjustment'};
 const mv=(b,type,p,qty,from,to,note)=>b.set(doc(collection(db,'movements')),{type,product:p.id,name:p.name,sku:p.sku,qty,from,to,note:note||'',uid:st.uid,uname:st.me.name,ts:new Date()});
-function whV(){if(!feat('warehouse'))return lockV('Warehouse');const ps=st.products,bs=st.branches,tf=st.tf,av=tf.p&&tf.f?ast(tf.f,tf.p):null;
+function whV(){if(!feat('warehouse'))return lockV('Warehouse');const ps=st.products.filter(tracked),bs=st.branches,tf=st.tf,av=tf.p&&tf.f?ast(tf.f,tf.p):null;
  const po=sel=>ps.map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${esc(p.name)} (${esc(p.sku)})</option>`).join('');
  const lo=sel=>[['main','Warehouse'],...bs.map(b=>[b.id,b.name])].map(([v,n])=>`<option value="${v}" ${sel===v?'selected':''}>${esc(n)}</option>`).join('');
  return `<div class="card"><h3>Receive stock into the warehouse</h3><form class="fm row" data-s="receive"><label>Product<select name="p" required><option value="">Select…</option>${po('')}</select></label><label>Quantity received<input name="q" type="number" min="1" step="1" required></label><label>Supplier / invoice no.<input name="n"></label><button class="p">Receive stock</button></form></div>
@@ -442,6 +450,9 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ cat:id=>{st.cat=id;render()},
+ pimgcam:()=>$('f_pimgc').click(),pimgup:()=>$('f_pimgu').click(),
+ pimgrm:()=>{st.pimg='';$('pimgprev').innerHTML=pimgHtml('')},
  prof:()=>{st.pf=true;render()},photopick:()=>$('f_photo').click(),
  async photorm(){try{await updateDoc(doc(db,'users',st.uid),{photo:''});toast('Photo removed.')}catch(e){toast(e.message)}},
  async pwreset(){try{await sendPasswordResetEmail(auth,st.me.email||auth.currentUser.email);toast('A password reset link was sent to your email.')}catch(e){toast(e.message)}},
@@ -475,7 +486,7 @@ const A={
   if(!confirm(`Delete sale ${s.no} (${cur(s.total)})? Any refunds on it are removed too. This cannot be undone.`))return;
   const rs=st.refunds.filter(r=>r.sale===id),back=confirm('Return the items from this sale to stock?\n\nOK = return to stock\nCancel = leave stock as it is');
   try{const batch=writeBatch(db);batch.delete(doc(db,'sales',id));rs.forEach(r=>batch.delete(doc(db,'refunds',r.id)));
-   if(back)s.items.forEach(i=>{const n=i.qty-rs.filter(r=>r.restock).reduce((a,r)=>a+(r.items.find(x=>x.id===i.id)?.qty||0),0);if(n>0)batch.set(doc(db,'stock',s.branch+'_'+i.id),{branch:s.branch,product:i.id,qty:increment(n)},{merge:true})});
+   if(back)s.items.filter(i=>tracked(prod(i.id)||{})).forEach(i=>{const n=i.qty-rs.filter(r=>r.restock).reduce((a,r)=>a+(r.items.find(x=>x.id===i.id)?.qty||0),0);if(n>0)batch.set(doc(db,'stock',s.branch+'_'+i.id),{branch:s.branch,product:i.id,qty:increment(n)},{merge:true})});
    await batch.commit();toast('Sale deleted.')}catch(e){toast('Delete failed: '+e.message)}},
  xusers:()=>dl('staff-contacts',[['Name','Phone','Email','Role','Branch','Status'],...st.users.map(u=>[u.name,u.phone,u.email,u.role||'Unassigned',bname(u.branch),u.active===false?'Disabled':'Active'])]),
  ephone:async id=>{const u=st.users.find(x=>x.id===id),v=prompt('Phone number for '+u.name,u.phone||'');if(v!==null)try{await updateDoc(doc(db,'users',id),{phone:v.trim()});toast('Phone saved.')}catch(e){toast(e.message)}},
@@ -483,14 +494,14 @@ const A={
  xsales:()=>dl('sales_'+bn(),[['Receipt','Date','Branch','Cashier','Type','Customer','Payment','Items sold','Total','Status'],...fsales().map(s=>[s.no,fdt(s.ts),bname(s.branch),s.uname,s.mode,s.customer,s.pay,s.items.reduce((a,i)=>a+i.qty,0),s.total.toFixed(2),stat(s)||'Completed'])]),
  xitems:()=>dl('sale-items_'+bn(),[['Receipt','Date','Branch','Cashier','Type','Product','Qty','Unit price','Line total'],...fsales().flatMap(s=>s.items.map(i=>[s.no,fdt(s.ts),bname(s.branch),s.uname,s.mode,i.name,i.qty,i.price.toFixed(2),(i.qty*i.price).toFixed(2)]))]),
  xrefunds:()=>dl('refunds_'+bn(),[['Refund no.','Date','Original sale','Branch','Processed by','Reason','Returned to stock','Amount'],...frefs().map(r=>[r.no,fdt(r.ts),r.saleNo,bname(r.branch),r.uname,r.reason,r.restock?'Yes':'No',r.total.toFixed(2)])]),
- xstock:()=>{const b=brId();if(!b||b==='all')return toast('Select a branch first.');dl('inventory_'+bname(b).replace(/\W+/g,'-'),[['Product','SKU','Retail price','Retail min price','Wholesale price','Wholesale min price','Quantity','Stock value (retail)','Barcode','Min quantity'],...st.products.map(p=>[p.name,p.sku,p.rp,p.rmp??p.rp,p.wp,p.wmp??p.wp,stock(p.id),(stock(p.id)*p.rp).toFixed(2),p.barcode||'',p.minStock||0])])},
+ xstock:()=>{const b=brId();if(!b||b==='all')return toast('Select a branch first.');dl('inventory_'+bname(b).replace(/\W+/g,'-'),[['Product','SKU','Retail price','Retail min price','Wholesale price','Wholesale min price','Quantity','Stock value (retail)','Barcode','Min quantity'],...st.products.map(p=>[p.name,p.sku,p.rp,p.rmp??p.rp,p.wp,p.wmp??p.wp,tracked(p)?stock(p.id):'n/a',tracked(p)?(stock(p.id)*p.rp).toFixed(2):'',p.barcode||'',p.minStock||0])])},
  am:id=>{st.am=id;render()},out:()=>signOut(auth),print:()=>window.print(),
  reset:async()=>{const e=prompt('Enter your account email');if(e)try{await sendPasswordResetEmail(auth,e);toast('Password reset email sent.')}catch(x){toast(x.message)}},
  tab:id=>{st.tab=id;if(st.view==='all'&&id!=='sales'){st.view=st.branches[0]?.id;watchBranch()}render()},
  mode:id=>{st.mode=id;st.cart.forEach(c=>delete c.price);render()},
  add:id=>{const c=st.cart.find(x=>x.id===id);c?c.qty++:st.cart.push({id,qty:1});render()},
  rm:id=>{st.cart=st.cart.filter(x=>x.id!==id);render()},
- edit:id=>{st.ed=id||null;render();scrollTo(0,0)},
+ edit:id=>{st.ed=id||null;st.pimg=undefined;render();scrollTo(0,0)},
  rcpt:id=>{st.rc=st.sales.find(s=>s.id===id);render()},
  closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;st.pf=false;render()}},
  rfopen:id=>{st.rf=st.sales.find(s=>s.id===id);render()},
@@ -500,16 +511,17 @@ const A={
  delb:async id=>{if(st.users.some(u=>u.branch===id))return toast('Reassign this branch\'s staff first.');if(confirm('Delete this branch?'))try{await deleteDoc(doc(db,'branches',id))}catch(e){toast(e.message)}},
  async checkout(){if(!subOk())return toast('Your subscription has expired. Renew to continue selling.');const b=brId(),m=st.mode,cu=($('cu')?.value||'').trim();
   if(!st.cart.length)return toast('Cart is empty.');
-  for(const c of st.cart){const p=prod(c.id);if(c.qty<1)return toast(`${p.name}: quantity must be at least 1.`);if(c.qty>stock(p.id))return toast(`${p.name}: only ${stock(p.id)} in stock.`);if(up(c)<minp(p))return toast(`${p.name}: lowest ${m} price is ${cur(minp(p))}.`)}
+  for(const c of st.cart){const p=prod(c.id);if(c.qty<1)return toast(`${p.name}: quantity must be at least 1.`);if(tracked(p)&&c.qty>stock(p.id))return toast(`${p.name}: only ${stock(p.id)} in stock.`);if(up(c)<minp(p))return toast(`${p.name}: lowest ${m} price is ${cur(minp(p))}.`)}
   if(m==='wholesale'&&!cu)return toast('Enter the wholesale customer name.');
   const items=st.cart.map(c=>({id:c.id,name:prod(c.id).name,qty:c.qty,price:up(c)})),tend=+$('tend').value||0;
-  const lows=items.filter(i=>{const p=prod(i.id);return p.minStock>0&&stock(i.id)-i.qty<=p.minStock}).map(i=>`${i.name} (${stock(i.id)-i.qty} left)`);
+  const lows=items.filter(i=>{const p=prod(i.id);return tracked(p)&&p.minStock>0&&stock(i.id)-i.qty<=p.minStock}).map(i=>`${i.name} (${stock(i.id)-i.qty} left)`);
   const s={no:'R'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:m,customer:cu,pay:$('pay').value,tend,items,total:total()};
   try{const batch=writeBatch(db);batch.set(doc(collection(db,'sales')),{...s,ts:new Date()});
-   items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
+   items.filter(i=>tracked(prod(i.id))).forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(-i.qty)},{merge:true}));
    await batch.commit();st.cart=[];st.rc={...s,ts:Date.now()};render();afterSale(st.rc);if(lows.length)toast('Low stock: '+lows.join(', ')+'. Time to reorder.',8000)}catch(e){toast('Sale failed: '+e.message)}}};
 const C={
  jm:(_,v)=>{st.jm=v;render()},
+ ptype:(_,v)=>{const hide=v==='service';document.querySelectorAll('.invf').forEach(l=>{l.style.display=hide?'none':'';l.querySelectorAll('input').forEach(i=>i.disabled=hide||i.dataset.ok==='0')})},
  pp:(id,v)=>{setPP({[id]:v});applyPaper();render()},lbs:(_,v)=>{st.lb.size=v;render()},
  lbn:(_,v)=>{st.lb.n=Math.min(200,Math.max(1,parseInt(v)||1));render()},lbp:(_,v)=>{st.lb.pr=!!v;render()},
  tf:(id,v)=>{st.tf.q=$('tfq')?.value||'';st.tf.n=$('tfn')?.value||'';st.tf[id]=v;render()},
@@ -527,7 +539,7 @@ const F={
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
   const bc=(d.barcode||'').trim();if(bc&&st.products.some(x=>x.id!==d.id&&(x.barcode===bc||String(x.sku)===bc)))return toast('That barcode is already used by another product.');
-  try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),barcode:bc,minStock:Math.max(0,parseInt(d.minStock)||0),rp:+d.rp,rmp,wp:+d.wp,wmp});const b=brId();if(d.qty!==undefined&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;toast('Product saved.')}catch(e){toast(e.message)}},
+  try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),barcode:bc,minStock:Math.max(0,parseInt(d.minStock)||0),rp:+d.rp,rmp,wp:+d.wp,wmp,noStock:d.type==='service',category:(d.category||'').trim(),image:st.pimg!==undefined?st.pimg:(prod(d.id)?.image||'')});const b=brId();if(d.qty!==undefined&&d.type!=='service'&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;st.pimg=undefined;toast('Product saved.')}catch(e){toast(e.message)}},
  async branch(f){if(st.branches.length>=(st.sub?.maxBranches||1))return toast(`Your plan allows ${st.sub?.maxBranches||1} branch(es). Upgrade to add more.`);try{{const used=new Set(st.branches.map(b=>b.id));let k=1;while(used.has('b'+k))k++;await setDoc(doc(db,'branches','b'+k),{name:new FormData(f).get('n').trim()})}f.reset()}catch(e){toast(e.message)}},
  async refund(f){const s=st.rf,d=new FormData(f),b=s.branch;
   const items=s.items.map(i=>({id:i.id,name:i.name,price:i.price,qty:parseInt(d.get('q_'+i.id))||0})).filter(i=>i.qty>0);
@@ -535,7 +547,7 @@ const F={
   for(const i of items){const o=s.items.find(x=>x.id===i.id);if(i.qty>o.qty-refd(s.id,i.id))return toast(`${i.name}: refund exceeds quantity sold.`)}
   const r={sale:s.id,saleNo:s.no,no:'F'+Date.now().toString(36).toUpperCase().slice(-7),branch:b,uid:st.uid,uname:st.me.name,mode:s.mode,customer:s.customer||'',pay:s.pay,items,total:items.reduce((a,i)=>a+i.qty*i.price,0),reason:d.get('reason').trim(),restock:!!d.get('restock')};
   try{const batch=writeBatch(db);batch.set(doc(collection(db,'refunds')),{...r,ts:new Date()});
-   if(r.restock)items.forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(i.qty)},{merge:true}));
+   if(r.restock)items.filter(i=>tracked(prod(i.id)||{})).forEach(i=>batch.set(doc(db,'stock',b+'_'+i.id),{branch:b,product:i.id,qty:increment(i.qty)},{merge:true}));
    await batch.commit();st.rf=null;st.rc={...r,ts:Date.now(),refund:true};render()}catch(e){toast('Refund failed: '+e.message)}},
  async receive(f){const d=Object.fromEntries(new FormData(f)),p=prod(d.p),q=parseInt(d.q);
   if(!p||!(q>0))return toast('Choose a product and a quantity above 0.');
@@ -577,6 +589,9 @@ const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false
  if(f!==''||r.length){r.push(f);rows.push(r)}return rows.filter(r=>r.some(x=>x.trim()!==''))};
 const hmap=h=>Object.fromEntries(h.map((x,i)=>[x.trim().toLowerCase(),i]));
 const I={
+ async pimg(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+  const W=320,H=240,cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d'),k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;
+  g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(img,(W-w)/2,(H-h)/2,w,h);st.pimg=cv.toDataURL('image/jpeg',0.72);$('pimgprev').innerHTML=pimgHtml(st.pimg)}catch(e){toast('Could not use that image: '+e.message)}},
  async photo(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
   const S=200,cv=document.createElement('canvas');cv.width=cv.height=S;const g=cv.getContext('2d'),k=Math.max(S/img.width,S/img.height),w=img.width*k,h=img.height*k;
   g.fillStyle='#fff';g.fillRect(0,0,S,S);g.drawImage(img,(S-w)/2,(S-h)/2,w,h);
@@ -597,7 +612,7 @@ const I={
   const ex=new Map(st.products.map(p=>[String(p.sku).toLowerCase(),p])),list=[...items.entries()],nw=list.filter(([k])=>!ex.has(k)).length;
   if(!confirm(`Import ${list.length} products: ${nw} new, ${list.length-nw} to update.\n`+(qb?`Quantities will be set at ${bname(b)}.`:'Quantities will not be changed (pick a single branch in the header to import them).')+(bad.length?`\n${bad.length} invalid row(s) will be skipped.`:'')+'\n\nContinue?'))return;
   try{for(let i=0;i<list.length;i+=200){const bt=writeBatch(db);
-    list.slice(i,i+200).forEach(([k,v])=>{const old=ex.get(k),ref=old?doc(db,'products',old.id):doc(collection(db,'products')),{q,...d}=v;bt.set(ref,{...(old&&old.barcode?{barcode:old.barcode}:{}),...(old&&old.minStock?{minStock:old.minStock}:{}),...d});if(qb&&q!==null)bt.set(doc(db,'stock',b+'_'+ref.id),{branch:b,product:ref.id,qty:q},{merge:true})});
+    list.slice(i,i+200).forEach(([k,v])=>{const old=ex.get(k),ref=old?doc(db,'products',old.id):doc(collection(db,'products')),{q,...d}=v;bt.set(ref,d,{merge:true});if(qb&&q!==null)bt.set(doc(db,'stock',b+'_'+ref.id),{branch:b,product:ref.id,qty:q},{merge:true})});
     await bt.commit()}
    toast(`Imported ${list.length} products.`+(bad.length?` Skipped ${bad.length} invalid row(s).`:''))}catch(e){toast('Import failed: '+e.message)}},
  async stk(file,el){if(!file)return;const rows=parseCSV(await file.text());el.value='';const H=hmap(rows[0]||[]);
