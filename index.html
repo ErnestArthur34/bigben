@@ -77,6 +77,8 @@ td{padding:10px 12px;border-top:1px solid var(--bd);white-space:nowrap}tr:hover 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:var(--tx);color:var(--bg);padding:12px 18px;border-radius:12px;z-index:30;max-width:90vw;box-shadow:0 12px 30px rgba(0,0,0,.3);animation:tin .25s ease-out}
 td button{padding:5px 10px;font-size:13px;border-radius:8px}td button+button{margin-left:4px}
 a{color:var(--ac);font-weight:500;text-decoration:none}a:hover{text-decoration:underline}
+#camfloat{position:fixed;right:16px;bottom:16px;width:190px;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:15;background:#000;border:2px solid var(--ac)}
+#camfloat video{width:100%;display:block;aspect-ratio:4/3;object-fit:cover}#camfloat button{position:absolute;top:6px;right:6px;padding:2px 8px;background:rgba(0,0,0,.55);color:#fff;border-color:transparent}
 @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}}
 @media(max-width:640px){header{padding:10px 14px}main{padding:14px}nav{padding:8px 12px}.stats b{font-size:22px}}
 @page{size:80mm auto;margin:3mm}
@@ -150,7 +152,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  platform:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b24';
+const BUILD='2026.10.18-b25';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -245,10 +247,37 @@ function bc128(t){t=String(t).replace(/[^\x20-\x7e]/g,'?');const v=[104];[...t].
  let x=10,r='';v.forEach(k=>{[...C128[k]].forEach((w,i)=>{w=+w;if(i%2===0)r+=`<rect x="${x}" width="${w}" height="50"/>`;x+=w})});
  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${x+10} 50" preserveAspectRatio="none" fill="#000" shape-rendering="crispEdges">${r}</svg>`}
 const findCode=c=>{c=String(c).trim().toLowerCase();return st.products.find(p=>(p.barcode||'').toLowerCase()===c)||st.products.find(p=>String(p.sku).toLowerCase()===c)};
+/* Automatic scanning on the till: hardware scanners work anywhere on the page, the camera starts by itself, and both can be switched off. */
+let scMem={};   // kept in memory too, so the switch still works if the browser blocks storage
+const SC=()=>{let o={};try{o=JSON.parse(localStorage.getItem('pos_scan')||'{}')}catch(e){}o={...o,...scMem};return{on:o.on!==false,cam:o.cam===undefined?matchMedia('(pointer:coarse)').matches:o.cam}};
+const setSC=o=>{scMem={...scMem,...o};try{localStorage.setItem('pos_scan',JSON.stringify(SC()))}catch(e){}};
+const scanBtns=()=>{const o=SC(),ok='BarcodeDetector' in window;return `<button data-a="scanon" class="${o.on?'on':''}" title="Turn automatic barcode scanning on or off">${o.on?'● Scanner on':'○ Scanner off'}</button>${ok?`<button data-a="scancam" class="${o.on&&o.cam?'on':''}" title="Use this device's camera to scan">📷 Camera ${o.on&&o.cam?'on':'off'}</button>`:''}`};
+function beep(){try{navigator.vibrate&&navigator.vibrate(40);const a=beep.c||(beep.c=new (window.AudioContext||window.webkitAudioContext)()),o=a.createOscillator(),g=a.createGain();o.frequency.value=1100;g.gain.value=.08;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.08)}catch(e){}}
+let camS=null,camBusy=false;
+async function camStart(){camBusy=true;try{
+ const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),det=new BarcodeDetector(),el=document.createElement('div');
+ el.id='camfloat';el.innerHTML='<video playsinline muted></video><button title="Turn the camera off">✕</button>';document.body.appendChild(el);
+ const v=el.querySelector('video');v.srcObject=stream;await v.play();let last='',lt=0;
+ el.querySelector('button').onclick=()=>{setSC({cam:false});render()};
+ const tm=setInterval(async()=>{try{if(document.hidden||document.querySelector('.modal'))return;const r=await det.detect(v);
+   if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;if(!scanAdd(c))lt=n+3000}}}catch(_){}},300);
+ camS={stream,el,tm}}catch(e){setSC({cam:false});toast('Camera scanning is off: '+e.message)}camBusy=false;camSync()}
+function camStop(){if(!camS)return;clearInterval(camS.tm);camS.stream.getTracks().forEach(t=>t.stop());camS.el.remove();camS=null}
+function camSync(){const want=!!(st.me&&st.me.role&&st.tab==='pos'&&brId()&&brId()!=='all'&&SC().on&&SC().cam&&'BarcodeDetector' in window&&!document.hidden);
+ if(want&&!camS&&!camBusy)camStart();else if(!want&&camS)camStop()}
+let sbuf='',slast=0;
+document.addEventListener('keydown',e=>{   // a keyboard-style scanner types the code very fast, then Enter
+ if(st.tab!=='pos'||!st.me||!SC().on||document.querySelector('.modal'))return;
+ const t=e.target;if(t.matches&&t.matches('input,select,textarea'))return;   // typing in a box: leave it alone (the search box handles Enter itself)
+ if(e.ctrlKey||e.metaKey||e.altKey)return;
+ const n=Date.now();if(n-slast>100)sbuf='';slast=n;
+ if(e.key==='Enter'){if(sbuf.length>=3){e.preventDefault();const c=sbuf;sbuf='';scanAdd(c)}else sbuf='';return}
+ if(e.key.length===1)sbuf+=e.key});
+document.addEventListener('visibilitychange',()=>camSync());
 function scanAdd(code){const p=findCode(code);if(!p){toast('No product with code '+code);return false}
  if(stock(p.id)<1){toast(p.name+' is out of stock.');return false}
  const c=st.cart.find(x=>x.id===p.id);if(c){if(c.qty>=stock(p.id)){toast('Only '+stock(p.id)+' of '+p.name+' in stock.');return false}c.qty++}else st.cart.push({id:p.id,qty:1});
- st.q='';render();return true}
+ st.q='';beep();render();return true}
 async function camOpen(cb=scanAdd,once=false){if(!('BarcodeDetector' in window))return toast('Camera scanning is not supported on this browser. Use a USB/Bluetooth scanner, or type the code in the search box.');
  try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),det=new BarcodeDetector(),el=document.createElement('div');
   el.className='modal';el.innerHTML='<div class="card" style="max-width:420px;width:100%"><video playsinline muted style="width:100%;border-radius:8px;background:#000"></video><p class="sm mu">Point the camera at a barcode. Each scan adds the item to the cart. Press Done when finished.</p><button class="p" id="camx" style="width:100%">Done</button></div>';
@@ -277,7 +306,7 @@ const total=()=>st.cart.reduce((s,c)=>s+up(c)*c.qty,0);
 function posV(){if(!brId()||brId()==='all')return '<div class="card">Select a branch in the header to start selling.</div>';
  st.cart=st.cart.filter(c=>prod(c.id));const m=st.mode;
  return `<div class="pos"><div><div class="mode"><button class="${m==='retail'?'on':''}" data-a="mode" data-id="retail">Retail</button><button class="wh ${m==='wholesale'?'on':''}" data-a="mode" data-id="wholesale">Wholesale</button></div>
-<div style="display:flex;gap:8px;margin-top:10px"><input id="qs" style="flex:1" placeholder="Search, or scan a barcode" value="${esc(st.q)}" data-i="q" autocomplete="off"><button data-a="cam">📷 Scan</button></div><div class="grid" id="gr">${gridV()}</div></div>
+<div style="display:flex;gap:8px;margin-top:10px"><input id="qs" style="flex:1" placeholder="Search, or scan a barcode" value="${esc(st.q)}" data-i="q" autocomplete="off">${scanBtns()}</div><p class="sm mu" style="margin:6px 2px 0">${SC().on?'Scanner is on: just scan a barcode, no need to click anything.':'Scanner is off. Switch it on to scan barcodes.'}</p><div class="grid" id="gr">${gridV()}</div></div>
 <div class="card" style="align-self:start"><h3>Cart <span class="tag ${m}">${m}</span></h3>
 ${st.cart.map(c=>{const p=prod(c.id),bad=c.qty<1||c.qty>stock(p.id),pb=up(c)<minp(p);return `<div class="line"><div>${esc(p.name)}<div class="sm mu">Lowest price ${cur(minp(p))} · ${stock(p.id)} in stock</div><input type="number" step="0.01" min="0" class="${pb?'bad':''}" style="width:96px;padding:4px 6px;margin-top:3px" value="${up(c)}" data-c="uprice" data-id="${c.id}" aria-label="Unit price"></div><input type="number" min="0" class="${bad?'bad':''}" value="${c.qty}" data-c="qty" data-id="${c.id}"><span class="r">${cur(up(c)*c.qty)}</span><button class="d" style="padding:2px 6px" data-a="rm" data-id="${c.id}" aria-label="Remove">✕</button></div>`}).join('')||'<p class="mu">Tap a product to add it.</p>'}
 ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder="Customer / business name">':''}
@@ -362,7 +391,7 @@ function whV(){if(!feat('warehouse'))return lockV('Warehouse');const ps=st.produ
 ${ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td><b style="${p.minStock>0&&ast('main',p.id)<=p.minStock?'color:var(--dg)':''}">${ast('main',p.id)}${p.minStock>0&&ast('main',p.id)<=p.minStock?' ⚠':''}</b></td>${bs.map(b=>`<td>${ast(b.id,p.id)}</td>`).join('')}<td>${ast('main',p.id)+bs.reduce((a,b)=>a+ast(b.id,p.id),0)}</td><td><button data-a="adjust" data-id="${p.id}">Adjust warehouse</button></td></tr>`).join('')||'<tr><td colspan="9" class="mu">Add products first.</td></tr>'}</table></div></div>
 <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Movement history</h3><button data-a="xmoves">Export</button></div><div class="tw"><table><tr><th>Date</th><th>Type</th><th>Product</th><th class="r">Qty</th><th>From</th><th>To</th><th>By</th><th>Note</th></tr>
 ${st.moves.map(m=>`<tr><td>${fdt(m.ts)}</td><td><span class="tag retail">${MT[m.type]||m.type}</span></td><td>${esc(m.name)}</td><td class="r">${m.type==='adjust'&&m.qty>0?'+':''}${m.qty}</td><td>${esc(loc(m.from))}</td><td>${esc(loc(m.to))}</td><td>${esc(m.uname)}</td><td>${esc(m.note)}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No movements yet.</td></tr>'}</table></div></div>`}
-function render(){const a=$('app');document.title=appName();if(!auth)return;
+function render(){const a=$('app');document.title=appName();camSync();if(!auth)return;
  if(st.me===undefined){a.innerHTML='<p class="mu" style="padding:24px">Loading…</p>';return}
  if(!st.me){a.innerHTML='<div class="authbg">'+authV()+'</div>';$('m').innerHTML='';return}
  if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML='<div class="authbg">'+waitV()+'</div>';return}
@@ -384,6 +413,8 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ scanon:()=>{setSC({on:!SC().on});render()},
+ scancam:()=>{const o=SC();setSC({on:true,cam:!(o.on&&o.cam)});render()},
  prm:()=>{st.prm=true;render()},printrc:()=>printRc(st.rc),
  async prser(){try{if(!navigator.serial)return toast('Serial printing needs Chrome or Edge on a computer.');await openSerial(await navigator.serial.requestPort());toast('Printer connected.');render()}catch(e){toast('Could not connect: '+e.message)}},
  async prusb(){try{if(!navigator.usb)return toast('USB printing is not supported in this browser.');await openUsb(await navigator.usb.requestDevice({filters:[]}));toast('Printer connected.');render()}catch(e){toast('Could not connect: '+e.message+'. On Windows the printer may need a WinUSB driver; try the serial/Bluetooth option or the print window.',8000)}},
