@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="DANEST POS">
 <meta name="description" content="Multi-branch point of sale for retail and wholesale.">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -79,6 +80,10 @@ td button{padding:5px 10px;font-size:13px;border-radius:8px}td button+button{mar
 a{color:var(--ac);font-weight:500;text-decoration:none}a:hover{text-decoration:underline}
 #camfloat{position:fixed;right:16px;bottom:16px;width:190px;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:15;background:#000;border:2px solid var(--ac)}
 #camfloat video{width:100%;display:block;aspect-ratio:4/3;object-fit:cover}#camfloat button{position:absolute;top:6px;right:6px;padding:2px 8px;background:rgba(0,0,0,.55);color:#fff;border-color:transparent}
+@media(pointer:coarse){input,select,textarea{font-size:16px}}
+header{padding-top:calc(12px + env(safe-area-inset-top,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
+.authbg{min-height:100dvh}nav{-webkit-backdrop-filter:blur(10px)}.modal{-webkit-backdrop-filter:blur(4px)}
+#camfloat{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}}
 @media(max-width:640px){header{padding:10px 14px}main{padding:14px}nav{padding:8px 12px}.stats b{font-size:22px}}
 @page{size:80mm auto;margin:3mm}
@@ -152,7 +157,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  platform:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b25';
+const BUILD='2026.10.18-b26';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -251,19 +256,31 @@ const findCode=c=>{c=String(c).trim().toLowerCase();return st.products.find(p=>(
 let scMem={};   // kept in memory too, so the switch still works if the browser blocks storage
 const SC=()=>{let o={};try{o=JSON.parse(localStorage.getItem('pos_scan')||'{}')}catch(e){}o={...o,...scMem};return{on:o.on!==false,cam:o.cam===undefined?matchMedia('(pointer:coarse)').matches:o.cam}};
 const setSC=o=>{scMem={...scMem,...o};try{localStorage.setItem('pos_scan',JSON.stringify(SC()))}catch(e){}};
-const scanBtns=()=>{const o=SC(),ok='BarcodeDetector' in window;return `<button data-a="scanon" class="${o.on?'on':''}" title="Turn automatic barcode scanning on or off">${o.on?'● Scanner on':'○ Scanner off'}</button>${ok?`<button data-a="scancam" class="${o.on&&o.cam?'on':''}" title="Use this device's camera to scan">📷 Camera ${o.on&&o.cam?'on':'off'}</button>`:''}`};
-function beep(){try{navigator.vibrate&&navigator.vibrate(40);const a=beep.c||(beep.c=new (window.AudioContext||window.webkitAudioContext)()),o=a.createOscillator(),g=a.createGain();o.frequency.value=1100;g.gain.value=.08;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.08)}catch(e){}}
+const scanBtns=()=>{const o=SC(),ok=camOk();return `<button data-a="scanon" class="${o.on?'on':''}" title="Turn automatic barcode scanning on or off">${o.on?'● Scanner on':'○ Scanner off'}</button>${ok?`<button data-a="scancam" class="${o.on&&o.cam?'on':''}" title="Use this device's camera to scan">📷 Camera ${o.on&&o.cam?'on':'off'}</button>`:''}`};
+function beep(){try{navigator.vibrate&&navigator.vibrate(40);const a=beep.c||(beep.c=new (window.AudioContext||window.webkitAudioContext)()),o=a.createOscillator(),g=a.createGain();a.state==='suspended'&&a.resume();o.frequency.value=1100;g.gain.value=.08;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.08)}catch(e){}}
+const camOk=()=>'BarcodeDetector' in window||!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+let zx=null;
+async function getDetector(){   // Chrome has a built-in detector; iPhones/Safari load the ZXing decoder once (and the app then caches it)
+ if('BarcodeDetector' in window)return new BarcodeDetector();
+ if(!zx)zx=import('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/+esm').then(Z=>{
+  const hints=new Map(),F=Z.BarcodeFormat;hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[F.CODE_128,F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_39,F.ITF,F.QR_CODE]);hints.set(Z.DecodeHintType.TRY_HARDER,true);
+  const rd=new Z.MultiFormatReader();rd.setHints(hints);const cv=document.createElement('canvas'),g=cv.getContext('2d',{willReadFrequently:true});
+  return{detect:async v=>{if(!v.videoWidth)return[];const w=Math.min(v.videoWidth,800),h=Math.round(v.videoHeight*w/v.videoWidth);cv.width=w;cv.height=h;g.drawImage(v,0,0,w,h);
+   try{return[{rawValue:rd.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(cv)))).getText()}]}catch(e){return[]}}}
+ }).catch(e=>{zx=null;throw new Error('the scanner could not be loaded. Check your internet connection and try again')});
+ return zx}
+const camVideo=()=>navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}});
 let camS=null,camBusy=false;
 async function camStart(){camBusy=true;try{
- const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),det=new BarcodeDetector(),el=document.createElement('div');
+ const det=await getDetector(),stream=await camVideo(),el=document.createElement('div');
  el.id='camfloat';el.innerHTML='<video playsinline muted></video><button title="Turn the camera off">✕</button>';document.body.appendChild(el);
- const v=el.querySelector('video');v.srcObject=stream;await v.play();let last='',lt=0;
+ const v=el.querySelector('video');v.muted=true;v.setAttribute('playsinline','');v.srcObject=stream;await v.play();let last='',lt=0;
  el.querySelector('button').onclick=()=>{setSC({cam:false});render()};
  const tm=setInterval(async()=>{try{if(document.hidden||document.querySelector('.modal'))return;const r=await det.detect(v);
    if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;if(!scanAdd(c))lt=n+3000}}}catch(_){}},300);
  camS={stream,el,tm}}catch(e){setSC({cam:false});toast('Camera scanning is off: '+e.message)}camBusy=false;camSync()}
 function camStop(){if(!camS)return;clearInterval(camS.tm);camS.stream.getTracks().forEach(t=>t.stop());camS.el.remove();camS=null}
-function camSync(){const want=!!(st.me&&st.me.role&&st.tab==='pos'&&brId()&&brId()!=='all'&&SC().on&&SC().cam&&'BarcodeDetector' in window&&!document.hidden);
+function camSync(){const want=!!(st.me&&st.me.role&&st.tab==='pos'&&brId()&&brId()!=='all'&&SC().on&&SC().cam&&camOk()&&!document.hidden);
  if(want&&!camS&&!camBusy)camStart();else if(!want&&camS)camStop()}
 let sbuf='',slast=0;
 document.addEventListener('keydown',e=>{   // a keyboard-style scanner types the code very fast, then Enter
@@ -278,10 +295,10 @@ function scanAdd(code){const p=findCode(code);if(!p){toast('No product with code
  if(stock(p.id)<1){toast(p.name+' is out of stock.');return false}
  const c=st.cart.find(x=>x.id===p.id);if(c){if(c.qty>=stock(p.id)){toast('Only '+stock(p.id)+' of '+p.name+' in stock.');return false}c.qty++}else st.cart.push({id:p.id,qty:1});
  st.q='';beep();render();return true}
-async function camOpen(cb=scanAdd,once=false){if(!('BarcodeDetector' in window))return toast('Camera scanning is not supported on this browser. Use a USB/Bluetooth scanner, or type the code in the search box.');
- try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),det=new BarcodeDetector(),el=document.createElement('div');
+async function camOpen(cb=scanAdd,once=false){if(!camOk())return toast('Camera scanning is not available on this browser. Use a USB/Bluetooth scanner, or type the code.');
+ try{toast('Opening the camera…',1500);const det=await getDetector(),stream=await camVideo(),el=document.createElement('div');
   el.className='modal';el.innerHTML='<div class="card" style="max-width:420px;width:100%"><video playsinline muted style="width:100%;border-radius:8px;background:#000"></video><p class="sm mu">Point the camera at a barcode. Each scan adds the item to the cart. Press Done when finished.</p><button class="p" id="camx" style="width:100%">Done</button></div>';
-  document.body.appendChild(el);const v=el.querySelector('video');v.srcObject=stream;await v.play();let last='',lt=0,tm;
+  document.body.appendChild(el);const v=el.querySelector('video');v.muted=true;v.setAttribute('playsinline','');v.srcObject=stream;await v.play();let last='',lt=0,tm;
   const stop=()=>{clearInterval(tm);stream.getTracks().forEach(t=>t.stop());el.remove()};el.querySelector('#camx').onclick=stop;
   tm=setInterval(async()=>{try{const r=await det.detect(v);if(r[0]){const c=r[0].rawValue,n=Date.now();if(c!==last||n-lt>2000){last=c;lt=n;cb(c);if(once)stop()}}}catch(_){}},300)}catch(e){toast('Could not open the camera: '+e.message)}}
 function lbV(p){const n=st.lb.n,code=p.barcode||p.sku,sz=st.lb.size||'a4',[lw,lh]=sz==='a4'?[0,0]:sz.split('x').map(Number);
