@@ -52,6 +52,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}:focus-visible{outl
 .pos{display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start}.pos>.card{position:sticky;top:70px;margin:0}
 @media(max-width:860px){.pos{grid-template-columns:1fr}.pos>.card{position:static}}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;margin-top:12px}
+.grid>.prod{content-visibility:auto;contain-intrinsic-size:auto 280px}
 .prod{text-align:left;display:grid;gap:3px;padding:14px;border-radius:14px;box-shadow:var(--sh);align-content:start}
 .prod:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:0 10px 24px var(--ring)}.prod:disabled{opacity:.45}
 .prod b{font-weight:600;line-height:1.25}.prod span:nth-of-type(2){font:700 19px 'Bricolage Grotesque',sans-serif;color:var(--ac);font-variant-numeric:tabular-nums;margin-top:4px}
@@ -114,7 +115,7 @@ const firebaseConfig={
 /* ========================================================================================= */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,sendPasswordResetEmail} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection as _collection,doc as _doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,orderBy,limit,writeBatch as _writeBatch,increment,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,getFirestore,persistentLocalCache,persistentMultipleTabManager,collection as _collection,doc as _doc,setDoc as _setDoc,addDoc as _addDoc,updateDoc as _updateDoc,deleteDoc as _deleteDoc,onSnapshot,query,where,orderBy,limit,writeBatch as _writeBatch,increment,serverTimestamp,deleteField} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* Multi-shop: each shop's data lives under orgs/{shopCode}/... Only 'users' stays at the top level. */
 const ROOT=['users','orgs','platform'];
@@ -129,7 +130,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=(t,ms=3500)=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',ms)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,cat:'',pimg:undefined,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,cat:'',pimg:undefined,imgs:{},brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -164,7 +165,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  platform:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b28';
+const BUILD='2026.10.18-b29';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -176,6 +177,7 @@ if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u
 const list=(q,key)=>onSnapshot(q,s=>{st[key]=s.docs.map(d=>({id:d.id,...d.data()}));if(key==='branches'&&isAdmin()&&!st.branches.some(b=>b.id===st.view)&&st.view!=='all'){st.view=st.branches[0]?.id||null;watchBranch()}render()},e=>toast(e.message));
 function start(){
  subs.push(list(collection(db,'branches'),'branches'),list(collection(db,'products'),'products'),
+  onSnapshot(collection(db,'images'),s=>{(s.docChanges?s.docChanges():s.docs.map(d=>({type:'added',doc:d}))).forEach(ch=>{const id=ch.doc.id,old=st.imgs[id];if(old&&old.startsWith('blob:'))URL.revokeObjectURL(old);if(ch.type==='removed')delete st.imgs[id];else st.imgs[id]=blobUrl(ch.doc.data().d)});render()},()=>{}),
   onSnapshot(doc(db,'settings','shop'),s=>{st.cfg=s.data()||{};render()},e=>toast(e.message)),
   onSnapshot(doc(db,'billing','subscription'),s=>{st.sub=s.data()||null;render()},e=>toast(e.message)));
  if(isAdmin())subs.push(list(query(collection(db,'users'),where('org','==',st.org)),'users'),list(collection(db,'payments'),'pays'),
@@ -334,7 +336,7 @@ const waitV=()=>{const m=st.me;if(!m.org)return setupV();return `<div class="car
 const tabs=()=>[['pos','Point of sale'],['sales','Sales'],...(st.me.role!=='cashier'?[['products','Products & stock'+(lowN()?' ⚠ '+lowN():'')]]:[]),...(isAdmin()?[['warehouse','Warehouse'],['billing','Billing & plan'],['branches','Branches & shop'],['users','Users']]:[]),...(st.me.superAdmin?[['platform','Platform (owner)']]:[])];
 
 const gridV=()=>{const ps=st.products.filter(p=>(p.name+p.sku+(p.barcode||'')).toLowerCase().includes(st.q.toLowerCase())&&(!st.cat||p.category===st.cat));
- return ps.map(p=>`<button class="prod" ${tracked(p)&&stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><div class="pi">${p.image?`<img src="${p.image}" alt="">`:`<i>${esc((p.name||'?').charAt(0).toUpperCase())}</i>`}</div><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))}${tracked(p)?` · ${stock(p.id)} in stock`:''}${low(p)?' <span class="tag refunded">Low</span>':''}</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
+ return ps.map(p=>`<button class="prod" ${tracked(p)&&stock(p.id)<1?'disabled':''} data-a="add" data-id="${p.id}"><div class="pi">${imgSrc(p)?`<img src="${imgSrc(p)}" loading="lazy" decoding="async" alt="">`:`<i>${esc((p.name||'?').charAt(0).toUpperCase())}</i>`}</div><b>${esc(p.name)}</b><span class="mu sm">${esc(p.sku)}</span><span>${cur(price(p))}</span><span class="sm mu">Lowest ${cur(minp(p))}${tracked(p)?` · ${stock(p.id)} in stock`:''}${low(p)?' <span class="tag refunded">Low</span>':''}</span></button>`).join('')||'<p class="mu">No products yet. Add some under Products & stock.</p>'};
 const total=()=>st.cart.reduce((s,c)=>s+up(c)*c.qty,0);
 function posV(){if(!brId()||brId()==='all')return '<div class="card">Select a branch in the header to start selling.</div>';
  st.cart=st.cart.filter(c=>prod(c.id));const m=st.mode;
@@ -350,11 +352,11 @@ ${m==='wholesale'?'<input id="cu" style="width:100%;margin-top:10px" placeholder
 
 function prodV(){const b=brId(),e=st.ed?prod(st.ed)||{}:{},ok=b&&b!=='all';
  return `<div class="card"><h3>${e.id?'Edit product':'New product'}</h3><form class="fm row" data-s="prod"><input type="hidden" name="id" value="${e.id||''}"><label>Item type<select name="type" data-c="ptype"><option value="item" ${!e.noStock?'selected':''}>Inventory item (stock is counted)</option><option value="service" ${e.noStock?'selected':''}>Non-inventory (menu item or service)</option></select></label><label>Category<input name="category" list="cats" value="${esc(e.category)}" placeholder="e.g. Drinks, Meals"><datalist id="cats">${cats().map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>
-<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label style="grid-column:1/-1">Barcode<span style="display:flex;gap:6px;min-width:0;max-width:560px"><input name="barcode" style="flex:1;min-width:0" value="${esc(e.barcode)}" placeholder="scan, type or generate"><button type="button" style="flex:none" data-a="scanbc" title="Scan with the camera">📷 Scan</button><button type="button" style="flex:none" data-a="genbc" title="Generate a new code">Auto</button></span></label><div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="pimg" id="pimgprev">${pimgHtml(st.pimg!==undefined?st.pimg:(e.image||''))}</span><input type="file" accept="image/*" capture="environment" id="f_pimgc" data-f="pimg" hidden><input type="file" accept="image/*" id="f_pimgu" data-f="pimg" hidden><button type="button" data-a="pimgcam">📷 Take photo</button><button type="button" data-a="pimgup">Upload image</button><span class="sm mu">Product picture (optional)</span></div>
+<label>Name<input name="name" value="${esc(e.name)}" required></label><label>SKU<input name="sku" value="${esc(e.sku)}" required></label><label style="grid-column:1/-1">Barcode<span style="display:flex;gap:6px;min-width:0;max-width:560px"><input name="barcode" style="flex:1;min-width:0" value="${esc(e.barcode)}" placeholder="scan, type or generate"><button type="button" style="flex:none" data-a="scanbc" title="Scan with the camera">📷 Scan</button><button type="button" style="flex:none" data-a="genbc" title="Generate a new code">Auto</button></span></label><div style="grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="pimg" id="pimgprev">${pimgHtml(st.pimg!==undefined?st.pimg:(e.id?imgSrc(e):''))}</span><input type="file" accept="image/*" capture="environment" id="f_pimgc" data-f="pimg" hidden><input type="file" accept="image/*" id="f_pimgu" data-f="pimg" hidden><button type="button" data-a="pimgcam">📷 Take photo</button><button type="button" data-a="pimgup">Upload image</button><span class="sm mu">Product picture (optional)</span></div>
 <label>Retail price<input name="rp" type="number" step="0.01" min="0" value="${e.rp??''}" required></label><label>Retail minimum price<input name="rmp" type="number" step="0.01" min="0" value="${e.rmp??''}" placeholder="same as price"></label>
 <label>Wholesale price<input name="wp" type="number" step="0.01" min="0" value="${e.wp??''}" required></label><label>Wholesale minimum price<input name="wmp" type="number" step="0.01" min="0" value="${e.wmp??''}" placeholder="same as price"></label><label class="invf" ${e.noStock?'style="display:none"':''}>Quantity${ok?' at '+esc(bname(b)):' (pick a branch)'}<input name="qty" data-ok="${ok?1:0}" type="number" min="0" step="1" value="${e.id?stock(e.id):0}" ${ok&&!e.noStock?'required':'disabled'}></label><label class="invf" ${e.noStock?'style="display:none"':''}>Minimum quantity (low-stock alert)<input name="minStock" ${e.noStock?'disabled':''} type="number" min="0" step="1" value="${e.minStock??0}" placeholder="0 = no alert"></label>
 <button class="p">Save product</button>${e.id?'<button type="button" data-a="edit" data-id="">Cancel</button>':''}</form></div>
-${ok&&lowN()?lowCard():''}<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button data-a="pick" data-id="inv">Import CSV</button><button data-a="xstock">Export inventory</button></span><input type="file" accept=".csv,text/csv" id="f_inv" data-f="inv" hidden></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Barcode</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th>Min qty</th><th></th></tr>
+${ok&&lowN()?lowCard():''}<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Catalogue${b&&b!=='all'?' · stock at '+esc(bname(b)):''}</h3><span style="display:flex;gap:8px;flex-wrap:wrap">${st.products.some(p=>p.image)?`<button class="p" data-a="migimg">⚡ Speed up images (${st.products.filter(p=>p.image).length})</button>`:''}<button data-a="pick" data-id="inv">Import CSV</button><button data-a="xstock">Export inventory</button></span><input type="file" accept=".csv,text/csv" id="f_inv" data-f="inv" hidden></div><div class="tw"><table><tr><th>Name</th><th>SKU</th><th>Barcode</th><th>Retail</th><th>Min price</th><th>Wholesale</th><th>Min price</th><th>Quantity</th><th>Min qty</th><th></th></tr>
 ${st.products.map(p=>`<tr><td><span style="display:flex;align-items:center;gap:8px"><span class="av s" style="border-radius:8px">${thumb(p)}</span>${esc(p.name)}${tracked(p)?'':' <span class="tag retail">No stock</span>'}</span></td><td>${esc(p.sku)}</td><td>${esc(p.barcode)}</td><td>${cur(p.rp)}</td><td>${cur(p.rmp??p.rp)}</td><td>${cur(p.wp)}</td><td>${cur(p.wmp??p.wp)}</td><td>${b&&b!=='all'&&tracked(p)?`<input type="number" min="0" style="width:80px" value="${stock(p.id)}" data-c="stock" data-id="${p.id}">`:'—'}</td><td>${p.minStock||'—'}</td><td><button data-a="edit" data-id="${p.id}">Edit</button> <button data-a="lbl" data-id="${p.id}">Labels</button> ${isAdmin()?`<button class="d" data-a="delp" data-id="${p.id}">Delete</button>`:''}</td></tr>`).join('')||'<tr><td colspan="10" class="mu">No products yet.</td></tr>'}</table></div></div>`}
 
 function salesV(){const ls=fsales(),rfs=frefs(),rt=rfs.reduce((a,r)=>a+r.total,0),sum=m=>ls.filter(s=>s.mode===m).reduce((a,s)=>a+s.total,0);
@@ -384,9 +386,14 @@ ${s.items.map(i=>`<div>${esc(i.name)}</div><div class="rw"><span>${i.qty} × ${c
 
 /* ---------- subscription ---------- */
 /* low-stock alerts: a product is "low" when its quantity is at or below its minimum quantity */
+/* Product pictures live in their own 'images' collection (not inside the product), so the product list loads fast and pictures fill in afterwards.
+   Each picture is turned into a short blob: link once, so redrawing the screen never re-decodes big strings. */
+const blobUrl=d=>{try{const[h,b]=d.split(','),bin=atob(b),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return URL.createObjectURL(new Blob([u],{type:h.match(/:(.*?);/)[1]}))}catch(e){return d}};
+const lc={};const imgSrc=p=>st.imgs[p.id]||(p.image?(lc[p.id+':'+p.image.length]||(lc[p.id+':'+p.image.length]=blobUrl(p.image))):'');
+async function toThumb(src){const img=new Image();img.src=src;await img.decode();const W=240,H=180,cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d'),k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(img,(W-w)/2,(H-h)/2,w,h);return cv.toDataURL('image/jpeg',0.65)}
 const tracked=p=>!p.noStock;   // non-inventory items (menu items, services) have no stock counting
 const cats=()=>[...new Set(st.products.map(p=>p.category).filter(Boolean))].sort();
-const thumb=p=>p.image?`<img src="${p.image}" alt="">`:esc((p.name||'?').charAt(0).toUpperCase());
+const thumb=p=>imgSrc(p)?`<img src="${imgSrc(p)}" loading="lazy" decoding="async" alt="">`:esc((p.name||'?').charAt(0).toUpperCase());
 const pimgHtml=u=>u?`<img src="${u}" alt=""><button type="button" class="px" data-a="pimgrm" title="Remove image">✕</button>`:'<span class="mu sm">No image</span>';
 const low=p=>tracked(p)&&p.minStock>0&&stock(p.id)<=p.minStock,lowN=()=>st.products.filter(low).length;
 const lowCard=()=>`<div class="card" style="border-color:var(--dg)"><h3 style="color:var(--dg)">⚠ Low stock (${lowN()})</h3><div class="tw"><table><tr><th>Product</th><th>SKU</th><th class="r">In stock</th><th class="r">Minimum</th><th class="r">To reorder</th></tr>${st.products.filter(low).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td class="r">${stock(p.id)}</td><td class="r">${p.minStock}</td><td class="r">${Math.max(0,p.minStock-stock(p.id))}</td></tr>`).join('')}</table></div></div>`;
@@ -428,7 +435,8 @@ function whV(){if(!feat('warehouse'))return lockV('Warehouse');const ps=st.produ
 ${ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.sku)}</td><td><b style="${p.minStock>0&&ast('main',p.id)<=p.minStock?'color:var(--dg)':''}">${ast('main',p.id)}${p.minStock>0&&ast('main',p.id)<=p.minStock?' ⚠':''}</b></td>${bs.map(b=>`<td>${ast(b.id,p.id)}</td>`).join('')}<td>${ast('main',p.id)+bs.reduce((a,b)=>a+ast(b.id,p.id),0)}</td><td><button data-a="adjust" data-id="${p.id}">Adjust warehouse</button></td></tr>`).join('')||'<tr><td colspan="9" class="mu">Add products first.</td></tr>'}</table></div></div>
 <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Movement history</h3><button data-a="xmoves">Export</button></div><div class="tw"><table><tr><th>Date</th><th>Type</th><th>Product</th><th class="r">Qty</th><th>From</th><th>To</th><th>By</th><th>Note</th></tr>
 ${st.moves.map(m=>`<tr><td>${fdt(m.ts)}</td><td><span class="tag retail">${MT[m.type]||m.type}</span></td><td>${esc(m.name)}</td><td class="r">${m.type==='adjust'&&m.qty>0?'+':''}${m.qty}</td><td>${esc(loc(m.from))}</td><td>${esc(loc(m.to))}</td><td>${esc(m.uname)}</td><td>${esc(m.note)}</td></tr>`).join('')||'<tr><td colspan="8" class="mu">No movements yet.</td></tr>'}</table></div></div>`}
-function render(){const a=$('app');document.title=appName();camSync();if(!auth)return;
+let rq=0;function render(){clearTimeout(rq);rq=setTimeout(renderNow,30)}   // several data updates arriving together redraw the screen only once
+function renderNow(){const a=$('app');document.title=appName();camSync();if(!auth)return;
  if(st.me===undefined){a.innerHTML='<p class="mu" style="padding:24px">Loading…</p>';return}
  if(!st.me){a.innerHTML='<div class="authbg">'+authV()+'</div>';$('m').innerHTML='';return}
  if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML='<div class="authbg">'+waitV()+'</div>';return}
@@ -450,6 +458,8 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ async migimg(){const L=st.products.filter(p=>p.image);if(!L.length)return;if(!confirm(`Move ${L.length} product picture(s) into the faster image store and shrink them? This takes a moment.`))return;
+  try{for(let i=0;i<L.length;i+=100){const bt=writeBatch(db);for(const p of L.slice(i,i+100)){const d=await toThumb(p.image);bt.set(doc(db,'images',p.id),{d});bt.update(doc(db,'products',p.id),{image:deleteField()})}await bt.commit();toast(`Optimised ${Math.min(i+100,L.length)} of ${L.length}…`,2000)}toast('Product pictures optimised.')}catch(e){toast('Could not finish: '+e.message)}},
  cat:id=>{st.cat=id;render()},
  pimgcam:()=>$('f_pimgc').click(),pimgup:()=>$('f_pimgu').click(),
  pimgrm:()=>{st.pimg='';$('pimgprev').innerHTML=pimgHtml('')},
@@ -506,7 +516,7 @@ const A={
  closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;st.pf=false;render()}},
  rfopen:id=>{st.rf=st.sales.find(s=>s.id===id);render()},
  rrcpt:id=>{st.rc={...st.refunds.find(r=>r.id===id),refund:true};render()},
- delp:async id=>{if(confirm('Delete this product?'))try{await deleteDoc(doc(db,'products',id))}catch(e){toast(e.message)}},
+ delp:async id=>{if(confirm('Delete this product?'))try{const bd=writeBatch(db);bd.delete(doc(db,'products',id));bd.delete(doc(db,'images',id));await bd.commit()}catch(e){toast(e.message)}},
  renb:async id=>{const n=prompt('Branch name',bname(id));if(n?.trim())try{await updateDoc(doc(db,'branches',id),{name:n.trim()})}catch(e){toast(e.message)}},
  delb:async id=>{if(st.users.some(u=>u.branch===id))return toast('Reassign this branch\'s staff first.');if(confirm('Delete this branch?'))try{await deleteDoc(doc(db,'branches',id))}catch(e){toast(e.message)}},
  async checkout(){if(!subOk())return toast('Your subscription has expired. Renew to continue selling.');const b=brId(),m=st.mode,cu=($('cu')?.value||'').trim();
@@ -539,7 +549,7 @@ const F={
  async prod(f){const d=Object.fromEntries(new FormData(f)),r=d.id?doc(db,'products',d.id):doc(collection(db,'products'));
   const rmp=d.rmp===''?+d.rp:+d.rmp,wmp=d.wmp===''?+d.wp:+d.wmp;if(rmp>+d.rp||wmp>+d.wp)return toast('A minimum price cannot be higher than its selling price.');
   const bc=(d.barcode||'').trim();if(bc&&st.products.some(x=>x.id!==d.id&&(x.barcode===bc||String(x.sku)===bc)))return toast('That barcode is already used by another product.');
-  try{await setDoc(r,{name:d.name.trim(),sku:d.sku.trim(),barcode:bc,minStock:Math.max(0,parseInt(d.minStock)||0),rp:+d.rp,rmp,wp:+d.wp,wmp,noStock:d.type==='service',category:(d.category||'').trim(),image:st.pimg!==undefined?st.pimg:(prod(d.id)?.image||'')});const b=brId();if(d.qty!==undefined&&d.type!=='service'&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;st.pimg=undefined;toast('Product saved.')}catch(e){toast(e.message)}},
+  try{const old=prod(d.id)||{},ni=st.pimg!==undefined?st.pimg:(old.image||undefined),bt0=writeBatch(db);bt0.set(r,{name:d.name.trim(),sku:d.sku.trim(),barcode:bc,minStock:Math.max(0,parseInt(d.minStock)||0),rp:+d.rp,rmp,wp:+d.wp,wmp,noStock:d.type==='service',category:(d.category||'').trim()});if(ni)bt0.set(doc(db,'images',r.id),{d:ni});else if(ni==='')bt0.delete(doc(db,'images',r.id));await bt0.commit();const b=brId();if(d.qty!==undefined&&d.type!=='service'&&b&&b!=='all')await setDoc(doc(db,'stock',b+'_'+r.id),{branch:b,product:r.id,qty:Math.max(0,parseInt(d.qty)||0)},{merge:true});st.ed=null;st.pimg=undefined;toast('Product saved.')}catch(e){toast(e.message)}},
  async branch(f){if(st.branches.length>=(st.sub?.maxBranches||1))return toast(`Your plan allows ${st.sub?.maxBranches||1} branch(es). Upgrade to add more.`);try{{const used=new Set(st.branches.map(b=>b.id));let k=1;while(used.has('b'+k))k++;await setDoc(doc(db,'branches','b'+k),{name:new FormData(f).get('n').trim()})}f.reset()}catch(e){toast(e.message)}},
  async refund(f){const s=st.rf,d=new FormData(f),b=s.branch;
   const items=s.items.map(i=>({id:i.id,name:i.name,price:i.price,qty:parseInt(d.get('q_'+i.id))||0})).filter(i=>i.qty>0);
@@ -590,8 +600,7 @@ const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false
 const hmap=h=>Object.fromEntries(h.map((x,i)=>[x.trim().toLowerCase(),i]));
 const I={
  async pimg(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
-  const W=320,H=240,cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d'),k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;
-  g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(img,(W-w)/2,(H-h)/2,w,h);st.pimg=cv.toDataURL('image/jpeg',0.72);$('pimgprev').innerHTML=pimgHtml(st.pimg)}catch(e){toast('Could not use that image: '+e.message)}},
+  st.pimg=await toThumb(img.src);$('pimgprev').innerHTML=pimgHtml(st.pimg)}catch(e){toast('Could not use that image: '+e.message)}},
  async photo(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
   const S=200,cv=document.createElement('canvas');cv.width=cv.height=S;const g=cv.getContext('2d'),k=Math.max(S/img.width,S/img.height),w=img.width*k,h=img.height*k;
   g.fillStyle='#fff';g.fillRect(0,0,S,S);g.drawImage(img,(S-w)/2,(S-h)/2,w,h);
