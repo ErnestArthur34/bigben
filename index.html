@@ -84,6 +84,9 @@ a{color:var(--ac);font-weight:500;text-decoration:none}a:hover{text-decoration:u
 header{padding-top:calc(12px + env(safe-area-inset-top,0px));padding-left:max(20px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px))}
 .authbg{min-height:100dvh}nav{-webkit-backdrop-filter:blur(10px)}.modal{-webkit-backdrop-filter:blur(4px)}
 #camfloat{bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+button.chip{background:transparent;border-color:transparent;padding:4px 12px 4px 4px;color:#fff;border-radius:999px;text-align:left}button.chip:hover{background:rgba(255,255,255,.16);transform:none;border-color:transparent}
+.av{overflow:hidden;flex:none}.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.lg{width:76px;height:76px;font-size:30px;background:var(--ac);color:var(--on)}.av.s{width:28px;height:28px;font-size:13px;background:var(--ac);color:var(--on)}
 @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}}
 @media(max-width:640px){header{padding:10px 14px}main{padding:14px}nav{padding:8px 12px}.stats b{font-size:22px}}
 @page{size:80mm auto;margin:3mm}
@@ -122,7 +125,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=(t,ms=3500)=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',ms)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -157,7 +160,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  platform:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b26';
+const BUILD='2026.10.18-b27';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -236,6 +239,15 @@ async function rcBytes(s,o){const W=o.paper==='58'?32:48,c=st.cfg,parts=[],B=(..
  const out=new Uint8Array(parts.reduce((a,p)=>a+p.length,0));let k=0;parts.forEach(p=>{out.set(p,k);k+=p.length});return out}
 async function printRc(s){if(PP().mode==='direct'){try{await sendBytes(await rcBytes(s,PP()));return}catch(e){toast('Printer problem: '+e.message+' Opening the print window instead.')}}window.print()}
 function afterSale(s){const o=PP();if(o.mode!=='direct'||!pr)return;if(o.auto)printRc(s);else if(o.drawer&&s.pay==='Cash')kick().catch(()=>{})}
+const avatar=(m)=>m.photo?`<img src="${m.photo}" alt="">`:esc((m.name||'?').trim().charAt(0).toUpperCase()||'?');
+function profV(){const m=st.me;
+ return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:440px;font-family:inherit"><h3>My profile</h3>
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px"><span class="av lg">${avatar(m)}</span><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="file" accept="image/*" id="f_photo" data-f="photo" hidden><button class="p" data-a="photopick">${m.photo?'Change photo':'Upload photo'}</button>${m.photo?'<button class="d" data-a="photorm">Remove</button>':''}</div></div>
+<form class="fm" data-s="prof"><label>Full name<input name="name" value="${esc(m.name)}" required></label><label>Phone number<input name="ph" type="tel" value="${esc(m.phone)}" pattern="[0-9+() -]{7,20}" required></label>
+<label>Email<input value="${esc(m.email||auth.currentUser?.email)}" disabled></label>
+<div class="sm mu">Role: <b>${esc(m.role)}</b> · Shop code: <b>${esc(st.org)}</b>${m.branch?' · Branch: <b>'+esc(bname(m.branch))+'</b>':''}</div>
+<div style="display:flex;gap:8px"><button class="p" style="flex:1">Save changes</button><button type="button" style="flex:1" data-a="closerc" data-id="x">Close</button></div></form>
+<button style="margin-top:10px;width:100%" data-a="pwreset">Send me a password reset email</button></div></div>`}
 function prV(){const o=PP(),sel=(id,v,l)=>`<option value="${v}" ${o[id]===v?'selected':''}>${l}</option>`,ck=(id,l)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="pp" data-id="${id}" ${o[id]?'checked':''}> ${l}</label>`;
  return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:460px;font-family:inherit"><h3>🖨 Printer settings <span class="sm mu">(this device only)</span></h3><div class="fm">
 <label>Paper width<select data-c="pp" data-id="paper">${sel('paper','80','80 mm')}${sel('paper','58','58 mm')}</select></label>
@@ -352,7 +364,7 @@ const branchV=()=>{const c=st.cfg;return `<div class="card"><h3>Shop & receipt d
 <div class="card"><h3>Branches</h3><form class="fm row" data-s="branch"><label>New branch name<input name="n" required></label><button class="p">Add branch</button></form>
 <div class="tw"><table><tr><th>Branch</th><th>Staff</th><th></th></tr>${st.branches.map(b=>`<tr><td>${esc(b.name)}</td><td>${st.users.filter(u=>u.branch===b.id).length}</td><td><button data-a="renb" data-id="${b.id}">Rename</button> <button class="d" data-a="delb" data-id="${b.id}">Delete</button></td></tr>`).join('')||'<tr><td colspan="3" class="mu">Add your first branch.</td></tr>'}</table></div></div>`};
 const usersV=()=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3>Users & roles</h3><button data-a="xusers">Export staff contacts</button></div><p class="mu sm">Admins see every branch. Managers and cashiers work in one assigned branch. Managers edit products and stock; cashiers sell and see their own sales.</p><div class="tw"><table><tr><th>Name</th><th>Phone</th><th>Email</th><th>Role</th><th>Branch</th><th>Status</th></tr>
-${st.users.map(u=>{const self=u.id===st.uid;return `<tr><td>${esc(u.name)}</td><td>${u.phone?`<a href="tel:${esc(u.phone)}">${esc(u.phone)}</a>`:'—'} <button style="padding:1px 6px" data-a="ephone" data-id="${u.id}" aria-label="Edit phone">✎</button></td><td>${esc(u.email)}</td><td><select ${self?'disabled':''} data-c="role" data-id="${u.id}"><option value="">Unassigned</option>${['admin','manager','cashier'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
+${st.users.map(u=>{const self=u.id===st.uid;return `<tr><td><span style="display:flex;align-items:center;gap:8px"><span class="av s">${avatar(u)}</span>${esc(u.name)}</span></td><td>${u.phone?`<a href="tel:${esc(u.phone)}">${esc(u.phone)}</a>`:'—'} <button style="padding:1px 6px" data-a="ephone" data-id="${u.id}" aria-label="Edit phone">✎</button></td><td>${esc(u.email)}</td><td><select ${self?'disabled':''} data-c="role" data-id="${u.id}"><option value="">Unassigned</option>${['admin','manager','cashier'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
 <td><select ${u.role==='admin'?'disabled':''} data-c="ubranch" data-id="${u.id}"><option value="">None</option>${st.branches.map(b=>`<option value="${b.id}" ${u.branch===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}</select></td>
 <td><select ${self?'disabled':''} data-c="active" data-id="${u.id}"><option value="1" ${u.active!==false?'selected':''}>Active</option><option value="0" ${u.active===false?'selected':''}>Disabled</option></select></td></tr>`}).join('')}</table></div></div>`;
 
@@ -413,11 +425,11 @@ function render(){const a=$('app');document.title=appName();camSync();if(!auth)r
  if(!st.me){a.innerHTML='<div class="authbg">'+authV()+'</div>';$('m').innerHTML='';return}
  if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML='<div class="authbg">'+waitV()+'</div>';return}
  if(!tabs().some(t=>t[0]===st.tab))st.tab='pos';
- const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span class="tag" style="background:rgba(255,255,255,.16);color:#fff">${esc(bname(st.me.branch))}</span>`}${net()}<span class="chip"><span class="av">${esc((st.me.name||'?').trim().charAt(0).toUpperCase()||'?')}</span><span>${esc(st.me.name)}<small>${st.me.role}</small></span></span><button data-a="prm">🖨 Printer</button><button data-a="myphone">My contact</button><button data-a="out">Log out</button></header>
+ const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span class="tag" style="background:rgba(255,255,255,.16);color:#fff">${esc(bname(st.me.branch))}</span>`}${net()}<button class="chip" data-a="prof" title="My profile"><span class="av">${avatar(st.me)}</span><span>${esc(st.me.name)}<small>${st.me.role}</small></span></button><button data-a="prm">🖨 Printer</button><button data-a="out">Log out</button></header>
 <nav>${tabs().map(t=>`<button class="${st.tab===t[0]?'on':''}" data-a="tab" data-id="${t[0]}">${ic(t[0])}${t[1]}</button>`).join('')}</nav>`;
  const f=document.activeElement,keep=f&&f.id==='qs';
  a.innerHTML=hdr+banner()+'<main>'+({pos:posV,sales:salesV,products:prodV,warehouse:whV,billing:billV,platform:platV,branches:branchV,users:usersV}[st.tab])()+'</main><p class="sm mu" style="text-align:center;padding:10px">Build '+BUILD+'</p>';
- $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):st.prm?prV():'';
+ $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):st.prm?prV():st.pf?profV():'';
  if(!keep&&st.tab==='pos'&&matchMedia('(pointer:fine)').matches&&!document.activeElement.matches('input,select,textarea'))$('qs')?.focus();
  if(keep){const i=$('qs');i.focus();i.setSelectionRange(st.q.length,st.q.length)}}
 
@@ -430,6 +442,9 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ prof:()=>{st.pf=true;render()},photopick:()=>$('f_photo').click(),
+ async photorm(){try{await updateDoc(doc(db,'users',st.uid),{photo:''});toast('Photo removed.')}catch(e){toast(e.message)}},
+ async pwreset(){try{await sendPasswordResetEmail(auth,st.me.email||auth.currentUser.email);toast('A password reset link was sent to your email.')}catch(e){toast(e.message)}},
  scanon:()=>{setSC({on:!SC().on});render()},
  scancam:()=>{const o=SC();setSC({on:true,cam:!(o.on&&o.cam)});render()},
  prm:()=>{st.prm=true;render()},printrc:()=>printRc(st.rc),
@@ -477,7 +492,7 @@ const A={
  rm:id=>{st.cart=st.cart.filter(x=>x.id!==id);render()},
  edit:id=>{st.ed=id||null;render();scrollTo(0,0)},
  rcpt:id=>{st.rc=st.sales.find(s=>s.id===id);render()},
- closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;render()}},
+ closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;st.pf=false;render()}},
  rfopen:id=>{st.rf=st.sales.find(s=>s.id===id);render()},
  rrcpt:id=>{st.rc={...st.refunds.find(r=>r.id===id),refund:true};render()},
  delp:async id=>{if(confirm('Delete this product?'))try{await deleteDoc(doc(db,'products',id))}catch(e){toast(e.message)}},
@@ -551,6 +566,7 @@ const F={
    if(st.jm==='new')await regShop(d.shop.trim(),d.n.trim(),d.ph.trim());
    else{try{await setDoc(doc(db,'users',st.uid),{name:d.n.trim(),phone:d.ph.trim(),email:auth.currentUser.email,org:d.code.trim().toUpperCase(),role:null,branch:null,active:true,created:serverTimestamp()})}catch(_){throw new Error('Could not join. Check the shop code and try again.')}}
    e.textContent=''}catch(x){const t=msg(x);if(e)e.textContent=t;toast(t)}},
+ async prof(f){const d=Object.fromEntries(new FormData(f));try{await updateDoc(doc(db,'users',st.uid),{name:d.name.trim(),phone:d.ph.trim()});toast('Profile saved.')}catch(e){toast(e.message)}},
  async cfg(f){try{await setDoc(doc(db,'settings','shop'),Object.fromEntries(new FormData(f)),{merge:true});toast('Saved.')}catch(e){toast(e.message)}}};
 /* ---------- CSV import (files made by this app's Export buttons) ---------- */
 const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false;
@@ -561,6 +577,10 @@ const parseCSV=t=>{t=t.replace(/^\ufeff/,'');const rows=[];let r=[],f='',q=false
  if(f!==''||r.length){r.push(f);rows.push(r)}return rows.filter(r=>r.some(x=>x.trim()!==''))};
 const hmap=h=>Object.fromEntries(h.map((x,i)=>[x.trim().toLowerCase(),i]));
 const I={
+ async photo(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
+  const S=200,cv=document.createElement('canvas');cv.width=cv.height=S;const g=cv.getContext('2d'),k=Math.max(S/img.width,S/img.height),w=img.width*k,h=img.height*k;
+  g.fillStyle='#fff';g.fillRect(0,0,S,S);g.drawImage(img,(S-w)/2,(S-h)/2,w,h);
+  await updateDoc(doc(db,'users',st.uid),{photo:cv.toDataURL('image/jpeg',0.82)});toast('Photo saved.')}catch(e){toast('Could not save the photo: '+e.message)}},
  async logo(file,el){if(!file)return;el.value='';try{const img=new Image();img.src=URL.createObjectURL(file);await img.decode();
   const w=Math.min(300,img.width),h=Math.round(img.height*w/img.width),cv=document.createElement('canvas');cv.width=w;cv.height=h;const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(img,0,0,w,h);
   await setDoc(doc(db,'settings','shop'),{logo:cv.toDataURL('image/jpeg',0.8)},{merge:true});toast('Logo saved.')}catch(e){toast('Could not save the logo: '+e.message)}},
