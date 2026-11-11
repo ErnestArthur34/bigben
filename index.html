@@ -98,6 +98,9 @@ button.chip{background:transparent;border-color:transparent;padding:4px 12px 4px
 .jc{max-width:780px!important;font:14px/1.5 system-ui,sans-serif!important;page:card}.jc .jg{display:grid;grid-template-columns:1fr 1fr;gap:12px 26px;margin-top:12px}
 .jc .jf{border-bottom:1px dotted #666;padding:2px 0;min-height:26px}.jc .jf small{color:#555;margin-right:6px}.jc .jw{grid-column:1/-1}
 @page card{size:A5 landscape;margin:8mm}
+button.inst{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);color:#fff;font-weight:600;padding:7px 14px}button.inst:hover{background:rgba(255,255,255,.3)}
+.instTop{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:14px;z-index:5}header button.inst{margin-right:4px}
+#updbar{position:fixed;top:0;left:0;right:0;z-index:40;background:var(--w);color:#fff;padding:10px 16px;text-align:center;font-weight:600}#updbar button{margin-left:10px;background:#fff;color:#7a3b05;border-color:#fff;padding:5px 14px}
 @keyframes tin{from{opacity:0;transform:translate(-50%,10px)}}
 @media(max-width:640px){header{padding:10px 14px}main{padding:14px}nav{padding:8px 12px}.stats b{font-size:22px}}
 @page{size:80mm auto;margin:3mm}
@@ -136,7 +139,7 @@ const setDoc=(...a)=>ok(_setDoc(...a)),addDoc=(...a)=>ok(_addDoc(...a)),updateDo
 const writeBatch=d=>{const b=_writeBatch(d),c=b.commit.bind(b);b.commit=()=>ok(c());return b};
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const toast=(t,ms=3500)=>{$('t').innerHTML='<div class="toast">'+esc(t)+'</div>';setTimeout(()=>$('t').innerHTML='',ms)};
-const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,cat:'',pimg:undefined,imgs:{},ot:'dine',tb:'',ord:null,orders:[],hd:'',hist:null,kd:'',klog:null,jobs:[],jv:null,jl:'r',je:null,jres:null,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
+const st={uid:null,me:undefined,branches:[],products:[],stock:{},sales:[],refunds:[],rf:null,from:'',to:'',pend:{},lb:null,prm:false,pf:false,cat:'',pimg:undefined,imgs:{},ot:'dine',tb:'',ord:null,orders:[],hd:'',hist:null,kd:'',klog:null,inst:false,jobs:[],jv:null,jl:'r',je:null,jres:null,brand:'',sub:null,plat:{},pp:null,shops:[],act:null,pays:[],org:null,jm:'new',allStock:{},moves:[],tf:{p:'',f:'main',t:'',q:'',n:''},users:[],cfg:{},view:null,tab:'pos',mode:'retail',cart:[],q:'',am:'in',rc:null,ed:null};
 const cur=n=>(st.cfg.cur||'')+(+n||0).toFixed(2);
 const bname=id=>st.branches.find(b=>b.id===id)?.name||'—',uname=id=>st.users.find(u=>u.id===id)?.name||'—';
 const prod=id=>st.products.find(p=>p.id===id),stock=id=>st.stock[id]||0;
@@ -174,7 +177,7 @@ const IC={pos:'<circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><pat
  jobs:'<path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3 17.7 6.3 21l6.3-6.3a4 4 0 0 0 5.1-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>'};
 const ic=id=>IC[id]?`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[id]}</svg>`:'';
 const net=()=>!navigator.onLine?'<span class="tag" style="background:var(--wbg);color:var(--w)">Offline · saving on this device</span>':Object.values(st.pend).some(Boolean)?'<span class="tag retail">Syncing…</span>':'';
-const BUILD='2026.10.18-b34';
+const BUILD='2026.10.18-b36';
 const clear=a=>{a.forEach(u=>u());a.length=0};
 
 if(auth)onAuthStateChanged(auth,u=>{clear(subs);clear(bsubs);pub&&pub();st.uid=u?.uid||null;st.me=undefined;
@@ -265,6 +268,7 @@ function profV(){const m=st.me;
 <label>Email<input value="${esc(m.email||auth.currentUser?.email)}" disabled></label>
 <div class="sm mu">Role: <b>${esc(m.role)}</b> · Shop code: <b>${esc(st.org)}</b>${m.branch?' · Branch: <b>'+esc(bname(m.branch))+'</b>':''}</div>
 <div style="display:flex;gap:8px"><button class="p" style="flex:1">Save changes</button><button type="button" style="flex:1" data-a="closerc" data-id="x">Close</button></div></form>
+<div class="sm mu" style="margin:14px 0 6px">This app</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button style="flex:1" data-a="cplink">Copy installer link</button>${navigator.share?'<button style="flex:1" data-a="shlink">Share link</button>':''}<button style="flex:1" data-a="hardrefresh" title="Clears the saved copy and loads the newest version">Refresh app</button></div>
 <button style="margin-top:10px;width:100%" data-a="pwreset">Send me a password reset email</button></div></div>`}
 function prV(){const o=PP(),sel=(id,v,l)=>`<option value="${v}" ${o[id]===v?'selected':''}>${l}</option>`,ck=(id,l)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" data-c="pp" data-id="${id}" ${o[id]?'checked':''}> ${l}</label>`;
  return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:460px;font-family:inherit"><h3>🖨 Printer settings <span class="sm mu">(this device only)</span></h3><div class="fm">
@@ -403,6 +407,29 @@ ${!s.refund&&(s.service||s.tax)?`<div class="rw"><span>Subtotal</span><span>${cu
 const blobUrl=d=>{try{const[h,b]=d.split(','),bin=atob(b),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return URL.createObjectURL(new Blob([u],{type:h.match(/:(.*?);/)[1]}))}catch(e){return d}};
 const lc={};const imgSrc=p=>st.imgs[p.id]||(p.image?(lc[p.id+':'+p.image.length]||(lc[p.id+':'+p.image.length]=blobUrl(p.image))):'');
 async function toThumb(src){const img=new Image();img.src=src;await img.decode();const W=240,H=180,cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d'),k=Math.max(W/img.width,H/img.height),w=img.width*k,h=img.height*k;g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(img,(W-w)/2,(H-h)/2,w,h);return cv.toDataURL('image/jpeg',0.65)}
+/* ---------- always run the newest version ---------- */
+let updShown=false;
+async function checkUpdate(){if(updShown)return;
+ try{const t=await(await fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'})).text(),m=t.match(/const BUILD='([^']+)'/);
+  if(m&&m[1]!==BUILD){updShown=true;const b=document.createElement('div');b.id='updbar';b.innerHTML='A newer version of the app is ready. <button data-a="hardrefresh">Update now</button>';document.body.appendChild(b)}}catch(e){}}
+async function hardRefresh(){try{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister()}catch(e){}try{for(const k of await caches.keys())await caches.delete(k)}catch(e){}location.reload()}
+setTimeout(checkUpdate,3000);setInterval(checkUpdate,10*60*1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
+/* ---------- install the app (home-screen / desktop) ---------- */
+let dip=null;   // the browser's install prompt, when it offers one
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;render()});
+window.addEventListener('appinstalled',()=>{dip=null;toast('App installed. Open it from your home screen or desktop.',6000);render()});
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const instBtn=()=>isStandalone()?'':'<button class="inst" data-a="install" title="Install this app on your device">⬇ Install app</button>';
+const authWrap=x=>'<div class="authbg"><div class="instTop">'+instBtn()+'</div>'+x+'</div>';
+function instV(){const link=location.origin+location.pathname,ios=isIOS(),android=/android/i.test(navigator.userAgent);
+ const steps=ios?['Open this page in <b>Safari</b>.','Tap the <b>Share</b> button (the square with an arrow).','Scroll down and tap <b>Add to Home Screen</b>.','Tap <b>Add</b>. The app now opens from your home screen.']
+  :android?['Tap the <b>⋮ menu</b> at the top right of Chrome.','Tap <b>Install app</b> (or <b>Add to Home screen</b>).','Tap <b>Install</b>.']
+  :['In Chrome or Edge, click the <b>install icon</b> at the right end of the address bar,','or open the <b>⋮ menu</b> and choose <b>Install '+esc(appName())+'</b> (Chrome: Save and share → Install).','Firefox and some browsers cannot install apps. Open the link in Chrome or Edge.'];
+ return `<div class="modal" data-a="closerc"><div class="card rc" style="max-width:440px;font-family:inherit"><h3>Install ${esc(appName())}</h3><p class="mu sm">Installing puts the app on your home screen or desktop. It opens full-screen like a normal app, and works even with a weak connection.</p>
+<ol style="padding-left:20px;line-height:1.7">${steps.map(x=>`<li>${x}</li>`).join('')}</ol>
+<label style="display:grid;gap:4px;font-size:12.5px;color:var(--mu)">Installer link (send this to staff)<input readonly value="${esc(link)}" onfocus="this.select()"></label>
+<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="p" style="flex:1" data-a="cplink">Copy link</button>${navigator.share?'<button style="flex:1" data-a="shlink">Share</button>':''}<button style="flex:1" data-a="closerc" data-id="x">Close</button></div></div></div>`}
 /* ---------- typed form values survive screen refreshes (forms marked data-k) ---------- */
 const drafts={};
 const saveDraft=e=>{const f=e.target.closest&&e.target.closest('form[data-k]');if(f&&e.target.name)(drafts[f.dataset.k]=drafts[f.dataset.k]||{})[e.target.name]=e.target.type==='checkbox'?e.target.checked:e.target.value};
@@ -534,14 +561,14 @@ ${st.moves.map(m=>`<tr><td>${fdt(m.ts)}</td><td><span class="tag retail">${MT[m.
 let rq=0;function render(){clearTimeout(rq);rq=setTimeout(renderNow,30)}   // several data updates arriving together redraw the screen only once
 function renderNow(){const a=$('app');document.title=appName();camSync();if(!auth)return;
  if(st.me===undefined){a.innerHTML='<p class="mu" style="padding:24px">Loading…</p>';return}
- if(!st.me){a.innerHTML='<div class="authbg">'+authV()+'</div>';$('m').innerHTML='';return}
- if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML='<div class="authbg">'+waitV()+'</div>';return}
+ if(!st.me){a.innerHTML=authWrap(authV());$('m').innerHTML='';return}
+ if(!(st.org&&st.me.role&&st.me.active!==false&&(isAdmin()||st.me.branch))){a.innerHTML=authWrap(waitV());return}
  if(!tabs().some(t=>t[0]===st.tab))st.tab='pos';
- const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span class="tag" style="background:rgba(255,255,255,.16);color:#fff">${esc(bname(st.me.branch))}</span>`}${net()}<button class="chip" data-a="prof" title="My profile"><span class="av">${avatar(st.me)}</span><span>${esc(st.me.name)}<small>${st.me.role}</small></span></button><button data-a="prm">🖨 Printer</button><button data-a="out">Log out</button></header>
+ const hdr=`<header><b>${logo(26)}${esc(appName())}</b>${instBtn()}${isAdmin()?`<select data-c="view" aria-label="Branch">${st.branches.map(b=>`<option value="${b.id}" ${st.view===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}${st.tab==='sales'?`<option value="all" ${st.view==='all'?'selected':''}>All branches</option>`:''}</select>`:`<span class="tag" style="background:rgba(255,255,255,.16);color:#fff">${esc(bname(st.me.branch))}</span>`}${net()}<button class="chip" data-a="prof" title="My profile"><span class="av">${avatar(st.me)}</span><span>${esc(st.me.name)}<small>${st.me.role}</small></span></button><button data-a="prm">🖨 Printer</button><button data-a="out">Log out</button></header>
 <nav>${tabs().map(t=>`<button class="${st.tab===t[0]?'on':''}" data-a="tab" data-id="${t[0]}">${ic(t[0])}${t[1]}</button>`).join('')}</nav>`;
  const f=document.activeElement,keep=f&&f.id==='qs';
- a.innerHTML=hdr+banner()+'<main>'+({pos:posV,sales:salesV,products:prodV,warehouse:whV,orders:ordV,kitchen:kitV,jobs:jobsV,billing:billV,platform:platV,branches:branchV,users:usersV}[st.tab])()+'</main><p class="sm mu" style="text-align:center;padding:10px">Build '+BUILD+'</p>';
- $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):st.prm?prV():st.pf?profV():st.jv?jobV():'';
+ a.innerHTML=hdr+banner()+'<main>'+({pos:posV,sales:salesV,products:prodV,warehouse:whV,orders:ordV,kitchen:kitV,jobs:jobsV,billing:billV,platform:platV,branches:branchV,users:usersV}[st.tab])()+'</main><p class="sm mu" style="text-align:center;padding:10px">Build '+BUILD+' · <a href="#" data-a="chkupd">Check for updates</a></p>';
+ $('m').innerHTML=st.rc?rcptV(st.rc):st.rf?rfV(st.rf):st.act?actV(st.act):st.lb&&prod(st.lb.id)?lbV(prod(st.lb.id)):st.prm?prV():st.pf?profV():st.jv?jobV():st.inst?instV():'';
  if(!keep&&st.tab==='pos'&&matchMedia('(pointer:fine)').matches&&!document.activeElement.matches('input,select,textarea'))$('qs')?.focus();
  restoreDrafts();
  if(keep){const i=$('qs');i.focus();i.setSelectionRange(st.q.length,st.q.length)}}
@@ -555,6 +582,11 @@ const A={
   window.open('https://wa.me/'+n+'?text='+encodeURIComponent(`Hello, I want to subscribe.\nShop: ${st.cfg.name||''}\nShop code: ${st.org}\nPlan: ${P.name} (${period})\nAmount: ${gh(P[period])}`),'_blank')},
  act:id=>{st.act=id;render()},
  cam:()=>camOpen(),
+ hardrefresh:()=>hardRefresh(),
+ async chkupd(){updShown=false;await checkUpdate();if(!updShown)toast('You have the latest version ('+BUILD+').',5000)},
+ async install(){if(dip){try{dip.prompt();const r=await dip.userChoice;dip=null;if(r.outcome==='accepted')toast('Installing…')}catch(e){}render()}else{st.inst=true;render()}},
+ async cplink(){const l=location.origin+location.pathname;try{await navigator.clipboard.writeText(l);toast('Installer link copied.')}catch(e){toast('Select the link and copy it.')}},
+ shlink:()=>navigator.share({title:appName(),text:'Install '+appName(),url:location.origin+location.pathname}).catch(()=>{}),
  jview:id=>{st.jv=jobOf(id);render()},jlay:id=>{st.jl=id;render()},printjob:()=>printJob(jobOf(st.jv.id)||st.jv),
  jedit:id=>{st.je=id||null;delete drafts['job:'+(id||'new')];render();scrollTo(0,0)},jclear:()=>{st.jres=null;render()},
  async jfind(){const v=($('jq')?.value||'').trim(),b=brId();if(!v)return;if(!b||b==='all')return toast('Pick a branch first.');
@@ -641,7 +673,7 @@ const A={
  rm:id=>{st.cart=st.cart.filter(x=>x.id!==id);render()},
  edit:id=>{st.ed=id||null;st.pimg=undefined;delete drafts['prod:'+(id||'new')];render();scrollTo(0,0)},
  rcpt:id=>{st.rc=st.sales.find(s=>s.id===id);render()},
- closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;st.pf=false;st.jv=null;render()}},
+ closerc:(id,t,e)=>{if(e.target===t||id==='x'){st.rc=null;st.rf=null;st.act=null;st.lb=null;st.prm=false;st.pf=false;st.jv=null;st.inst=false;render()}},
  rfopen:id=>{st.rf=st.sales.find(s=>s.id===id);render()},
  rrcpt:id=>{st.rc={...st.refunds.find(r=>r.id===id),refund:true};render()},
  delp:async id=>{if(confirm('Delete this product?'))try{const bd=writeBatch(db);bd.delete(doc(db,'products',id));bd.delete(doc(db,'images',id));await bd.commit()}catch(e){toast(e.message)}},
